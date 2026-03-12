@@ -1,0 +1,3476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>IMAGESAIRO · NODE EDITOR</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1a1a1a;--canvas-bg:#1a1a1a;--grid:#222;
+  --nb:#252525;--nhdr:#2e2e2e;--nborder:#3a3a3a;
+  --acc:#e8ff47;--acc2:#ff6b35;--acc3:#4ecdc4;--acc4:#a78bfa;
+  --tx:#d4d4d4;--tx2:#888;--tx3:#555;
+  --red:#ff4560;--green:#00e396;
+  /* ComfyUI slot type colors */
+  --c-api:#f0c040;--c-model:#ff6b35;--c-cond:#e05050;
+  --c-image:#00e396;--c-mask:#ff4560;--c-string:#4ecdc4;
+  --c-int:#8888aa;--c-float:#aaaacc;--c-camera:#a78bfa;
+  --c-clip:#ffe97a;--c-vae:#ff9cf9;--c-latent:#9a6ee0;--c-lighting:#ffb347;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Mono',monospace;color:var(--tx);background:var(--bg);}
+
+/* ══ LAYOUT ══════════════════════════════════════════ */
+#app{display:flex;flex-direction:column;height:100%;}
+#topbar{
+  height:36px;background:#141414;border-bottom:1px solid #2a2a2a;
+  display:flex;align-items:center;padding:0 10px;gap:2px;flex-shrink:0;z-index:200;
+}
+#body{display:flex;flex:1;overflow:hidden;}
+#sidebar{
+  width:200px;flex-shrink:0;background:#181818;border-right:1px solid #2a2a2a;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#canvas-area{flex:1;position:relative;overflow:hidden;background:var(--canvas-bg);}
+#rightpanel{
+  width:240px;flex-shrink:0;background:#181818;border-left:1px solid #2a2a2a;
+  display:flex;flex-direction:column;
+}
+#statusbar{
+  height:22px;background:#111;border-top:1px solid #222;flex-shrink:0;
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:.54rem;color:var(--tx3);
+}
+
+/* ══ TOPBAR ══════════════════════════════════════════ */
+.logo{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.08em;color:var(--acc);margin-right:10px;}
+.logo span{color:var(--tx3);}
+.sep{width:1px;height:16px;background:#2a2a2a;margin:0 6px;}
+.tbtn{
+  padding:3px 8px;border-radius:3px;border:1px solid transparent;
+  background:none;color:var(--tx2);font-family:'DM Mono',monospace;
+  font-size:.58rem;cursor:pointer;letter-spacing:.04em;
+  display:flex;align-items:center;gap:4px;transition:all .1s;
+}
+.tbtn:hover{background:#222;border-color:#333;color:var(--tx);}
+.tbtn.run{background:var(--acc);color:#111;font-weight:600;border-color:var(--acc);}
+.tbtn.run:hover{background:#cfe830;}
+#api-area{margin-left:auto;display:flex;align-items:center;gap:7px;}
+#api-inp{
+  background:#111;border:1px solid #2a2a2a;border-radius:3px;
+  padding:3px 8px;color:var(--tx);font-family:'DM Mono',monospace;
+  font-size:.58rem;width:220px;outline:none;
+}
+#api-inp:focus{border-color:var(--acc2);}
+#api-dot{font-size:.56rem;padding:2px 7px;border-radius:10px;background:#111;border:1px solid #333;color:var(--tx3);}
+#api-dot.ok{color:var(--green);border-color:#1a5a3a;}
+
+/* ══ SIDEBAR ══════════════════════════════════════════ */
+.sb-section{border-bottom:1px solid #222;}
+.sb-hdr{
+  padding:7px 10px;font-size:.57rem;letter-spacing:.1em;color:var(--tx3);
+  text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;
+}
+.sb-hdr:hover{background:#1e1e1e;}
+.sb-items{padding:3px 0;}
+.sb-item{
+  padding:5px 10px 5px 14px;font-size:.6rem;color:var(--tx2);
+  cursor:pointer;display:flex;align-items:center;gap:7px;
+  transition:background .08s;
+}
+.sb-item:hover{background:#222;color:var(--tx);}
+.sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sb-sub{font-size:.52rem;color:var(--tx3);margin-left:auto;}
+
+/* ══ CANVAS ══════════════════════════════════════════ */
+#canvas{
+  position:absolute;inset:0;
+  background-image:radial-gradient(circle,#2c2c2c 1px,transparent 1px);
+  background-size:20px 20px;
+  cursor:default;overflow:hidden;
+}
+#tlayer{position:absolute;inset:0;transform-origin:0 0;will-change:transform;}
+#svg-wires{
+  position:absolute;inset:0;pointer-events:none;overflow:visible;
+  width:100%;height:100%;
+}
+#wire-overlay{position:fixed;inset:0;pointer-events:none;z-index:9000;}
+
+/* ══ NODE ══════════════════════════════════════════════ */
+.node{
+  position:absolute;
+  min-width:210px;max-width:300px;
+  background:var(--nb);
+  border:1px solid var(--nborder);
+  border-radius:5px;
+  box-shadow:0 3px 12px rgba(0,0,0,.5);
+}
+.node.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);}
+.node.executing{
+  border-color:#FFD700!important;
+  border-width:2px!important;
+  box-shadow:0 0 0 1px #FFD700, 0 0 12px 2px rgba(255,215,0,.35)!important;
+  animation:exec-pulse 1s ease-in-out infinite;
+}
+.node.exec-done{
+  border-color:var(--green)!important;
+  border-width:2px!important;
+  box-shadow:0 0 0 1px var(--green), 0 0 10px 2px rgba(0,227,150,.25)!important;
+  transition:border-color .3s, box-shadow .3s;
+}
+@keyframes exec-pulse{
+  0%,100%{box-shadow:0 0 0 1px #FFD700, 0 0 10px 2px rgba(255,215,0,.25);}
+  50%{box-shadow:0 0 0 2px #FFD700, 0 0 18px 4px rgba(255,215,0,.5);}
+}
+.node.running{border-color:var(--acc3);}
+.node.errored{border-color:var(--red);}
+.node.bypassed{opacity:.35;}
+.node-title-bar{
+  background:var(--nhdr);
+  border-bottom:1px solid var(--nborder);
+  border-radius:5px 5px 0 0;
+  padding:5px 8px;
+  display:flex;align-items:center;gap:6px;
+  cursor:grab;min-height:26px;
+}
+.node-title-bar:active{cursor:grabbing;}
+.node-color-stripe{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;}
+.node-label{font-size:.61rem;font-weight:500;flex:1;color:var(--tx);letter-spacing:.04em;}
+.node-btn{
+  width:14px;height:14px;border:none;background:none;
+  color:var(--tx3);cursor:pointer;font-size:.55rem;border-radius:2px;
+  display:flex;align-items:center;justify-content:center;
+  transition:color .1s,background .1s;
+}
+.node-btn:hover{color:var(--tx);background:#3a3a3a;}
+
+/* Slots area — inputs LEFT, outputs RIGHT, widgets BETWEEN */
+.node-content{padding:4px 0 5px;}
+
+.slot-row{
+  position:relative;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  min-height:20px;
+  align-items:center;
+}
+/* Input side */
+.slot-in{
+  display:flex;align-items:center;gap:0;
+  padding-left:14px;
+}
+/* Output side */
+.slot-out{
+  display:flex;align-items:center;justify-content:flex-end;gap:0;
+  padding-right:14px;
+}
+.slot-lbl{font-size:.56rem;color:var(--tx2);}
+.slot-lbl.out-lbl{text-align:right;}
+
+/* Sockets — positioned absolute on the edges */
+.sock{
+  position:absolute;
+  width:10px;height:10px;border-radius:50%;
+  border:2px solid currentColor;
+  background:var(--nb);
+  cursor:crosshair;
+  transition:background .1s,transform .1s;
+  z-index:100;
+}
+.sock:hover{background:currentColor;transform:scale(1.4);}
+.sock.conn{background:currentColor;}
+.sock.in-sock{left:-5px;}
+.sock.out-sock{right:-5px;}
+
+/* Type colors */
+.sock[data-t="API"]   ,.sock[data-t="API"]   {color:var(--c-api);}
+.sock[data-t="MODEL"] {color:var(--c-model);}
+.sock[data-t="COND"]  {color:var(--c-cond);}
+.sock[data-t="IMAGE"] {color:var(--c-image);}
+.sock[data-t="MASK"]  {color:var(--c-mask);}
+.sock[data-t="STRING"]{color:var(--c-string);}
+.sock[data-t="INT"]   {color:var(--c-int);}
+.sock[data-t="CAMERA"]{color:var(--c-camera);}
+.sock[data-t="LIGHTING"]{color:#ffb347;}
+
+/* Widget rows */
+.w-sep{height:1px;background:#2a2a2a;margin:3px 0;}
+.w-row{padding:3px 10px;}
+.w-lbl{font-size:.52rem;color:var(--tx3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px;}
+.w-inp,.w-sel{
+  width:100%;background:#181818;border:1px solid #333;border-radius:3px;
+  padding:4px 7px;color:var(--tx);font-family:'DM Mono',monospace;
+  font-size:.59rem;outline:none;resize:none;
+}
+.w-inp:focus,.w-sel:focus{border-color:#444;}
+.w-sel{
+  appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23555'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center;
+}
+.w-slider-r{display:flex;align-items:center;gap:6px;}
+.w-sl{flex:1;-webkit-appearance:none;height:2px;background:#333;border-radius:2px;outline:none;}
+.w-sl::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:var(--acc);cursor:pointer;}
+.w-v{font-size:.57rem;color:var(--acc);min-width:32px;text-align:right;}
+.w-pills{display:flex;flex-wrap:wrap;gap:3px;}
+.w-pill{
+  padding:2px 6px;border-radius:3px;border:1px solid #333;background:#181818;
+  font-size:.54rem;color:var(--tx2);cursor:pointer;transition:all .1s;
+}
+.w-pill:hover{border-color:#555;color:var(--tx);}
+.w-pill.on{border-color:var(--acc);color:var(--acc);background:rgba(232,255,71,.05);}
+.w-imgprev{
+  width:100%;aspect-ratio:16/9;border-radius:3px;overflow:hidden;
+  background:#111;border:1px solid #333;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.w-imgprev img{width:100%;height:100%;object-fit:contain;display:block;}
+.w-imgph{font-size:.55rem;color:var(--tx3);text-align:center;line-height:1.8;}
+
+/* Generate button */
+.w-run{
+  width:100%;padding:6px;border-radius:4px;border:none;
+  font-family:'DM Mono',monospace;font-size:.63rem;font-weight:600;
+  letter-spacing:.08em;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .12s;
+}
+.w-run.idle{background:var(--acc);color:#111;}
+.w-run.idle:hover{background:#cfe830;}
+.w-run.busy{background:rgba(78,205,196,.1);color:var(--acc3);cursor:not-allowed;border:1px solid rgba(78,205,196,.25);}
+.w-run.fail{background:rgba(255,69,96,.1);color:var(--red);border:1px solid rgba(255,69,96,.25);}
+.w-stat{font-size:.55rem;color:var(--tx3);text-align:center;min-height:13px;margin-top:2px;word-break:break-all;white-space:normal;}
+.w-ckptlbl{font-size:.54rem;color:var(--acc2);padding:3px 8px;background:rgba(255,107,53,.08);border-radius:3px;margin:2px 6px;border:1px solid rgba(255,107,53,.2);letter-spacing:.02em;}
+
+/* Output image */
+.w-outimg{
+  width:100%;border-radius:3px;overflow:hidden;background:#111;
+  border:1px solid #333;display:flex;align-items:center;justify-content:center;
+}
+.w-outimg.r169{aspect-ratio:16/9;}
+.w-outimg.r916{aspect-ratio:9/16;max-height:340px;}
+.w-outimg.r11{aspect-ratio:1;}
+.w-outimg.r43{aspect-ratio:4/3;}
+.w-outimg.r34{aspect-ratio:3/4;}
+.w-outimg img{width:100%;height:100%;object-fit:contain;display:block;}
+.w-outph{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--tx3);}
+.w-outph p{font-size:.56rem;}
+.w-btns{display:flex;gap:3px;margin-top:4px;}
+.w-obtn{
+  flex:1;padding:4px;border-radius:3px;border:1px solid #333;background:#181818;
+  color:var(--tx2);font-family:'DM Mono',monospace;font-size:.55rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:3px;transition:all .1s;
+}
+.w-obtn:hover{background:#222;border-color:#444;color:var(--tx);}
+.w-obtn.hl{border-color:#1a5a3a;color:var(--green);}
+
+/* Mask canvas */
+.w-maskwrap{
+  width:100%;aspect-ratio:16/9;position:relative;overflow:hidden;
+  border-radius:3px;border:1px solid #333;background:#111;
+}
+.w-maskwrap img.mbase{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+.w-maskwrap canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;}
+.w-mtools{display:flex;gap:3px;margin-top:3px;}
+.w-mtool{
+  padding:3px 7px;border-radius:3px;border:1px solid #333;background:#181818;
+  color:var(--tx2);font-size:.55rem;cursor:pointer;transition:all .1s;
+}
+.w-mtool:hover,.w-mtool.on{border-color:rgba(255,69,96,.5);color:var(--red);}
+
+/* ══ CONTEXT MENU ══════════════════════════════════════ */
+.ctx{
+  position:fixed;z-index:8000;
+  background:#1e1e1e;border:1px solid #333;border-radius:5px;
+  padding:4px 0;min-width:185px;
+  box-shadow:0 8px 24px rgba(0,0,0,.7);display:none;
+}
+.ctx-hdr{padding:4px 11px 4px;font-size:.54rem;color:var(--tx3);letter-spacing:.1em;border-bottom:1px solid #2a2a2a;margin-bottom:3px;}
+.ctx-item{
+  padding:5px 11px;font-size:.61rem;color:var(--tx2);cursor:pointer;
+  display:flex;align-items:center;gap:8px;transition:background .08s;
+}
+.ctx-item:hover{background:#2a2a2a;color:var(--tx);}
+.ctx-item.danger:hover{background:rgba(255,69,96,.08);color:var(--red);}
+.ctx-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.ctx-sep{height:1px;background:#2a2a2a;margin:3px 0;}
+.ctx-sub{font-size:.51rem;color:var(--tx3);margin-left:auto;}
+
+/* ══ RIGHT PANEL ══════════════════════════════════════ */
+.rp-tab-row{
+  display:flex;border-bottom:1px solid #2a2a2a;flex-shrink:0;
+}
+.rp-tab{
+  flex:1;padding:7px 4px;font-size:.57rem;color:var(--tx3);
+  text-align:center;cursor:pointer;letter-spacing:.06em;
+  border-bottom:2px solid transparent;transition:all .1s;
+}
+.rp-tab.on{color:var(--acc);border-bottom-color:var(--acc);}
+.rp-body{flex:1;overflow-y:auto;padding:8px;}
+.rp-body::-webkit-scrollbar{width:3px;}
+.rp-body::-webkit-scrollbar-thumb{background:#333;}
+.rp-section{margin-bottom:10px;}
+.rp-lbl{font-size:.54rem;color:var(--tx3);letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase;}
+.rp-val{font-size:.6rem;color:var(--tx2);line-height:1.6;}
+.queue-item{
+  background:#222;border-radius:3px;padding:6px 8px;margin-bottom:4px;
+  font-size:.57rem;display:flex;align-items:center;gap:7px;
+}
+.queue-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.queue-dot.running{background:var(--acc3);box-shadow:0 0 6px var(--acc3);}
+.queue-dot.done{background:var(--green);}
+.queue-dot.wait{background:var(--tx3);}
+
+/* ══ STATUS BAR ══════════════════════════════════════ */
+#sb-msg{color:var(--tx2);}
+#sb-zoom{margin-left:auto;}
+
+/* ══ SPIN ══════════════════════════════════════════════ */
+@keyframes spin{to{transform:rotate(360deg);}}
+.spin{width:11px;height:11px;border:2px solid rgba(78,205,196,.3);border-top-color:var(--acc3);border-radius:50%;animation:spin .6s linear infinite;}
+
+/* minimap */
+#mm{position:fixed;bottom:30px;right:248px;z-index:500;width:130px;height:80px;background:rgba(20,20,20,.95);border:1px solid #2a2a2a;border-radius:4px;overflow:hidden;}
+
+/* hidden file input */
+.fi{display:none;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+  onload="window._threeReady=true;if(window._onThreeReady)window._onThreeReady();"
+  onerror="console.error('three.js r128 load failed')"></script>
+<script>window._threeReady=!!(window.THREE);</script>
+</head>
+<body>
+<div id="app">
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo">IMAGESAIRO<span> NODE</span></div>
+  <div class="sep"></div>
+  <button class="tbtn" onclick="doReset()">↺ Default Workflow</button>
+  <button class="tbtn" onclick="clearCanvas()">✕ Clear</button>
+  <button class="tbtn" onclick="fitView()">⊞ Fit View</button>
+  <div class="sep"></div>
+  <button class="tbtn" onclick="saveWF()">↓ Save Workflow</button>
+  <button class="tbtn" onclick="document.getElementById('fi-wf').click()">↑ Load Workflow</button>
+  <div class="sep"></div>
+  <button class="tbtn run" onclick="runAll()">▶ Queue Prompt</button>
+  <div id="api-area">
+    <span style="font-size:.55rem;color:var(--tx3)">API KEY</span>
+    <input id="api-inp" type="password" placeholder="AIza..." oninput="onApiChange()">
+    <span id="api-dot">● 미입력</span>
+  </div>
+</div>
+
+<!-- BODY -->
+<div id="body">
+
+  <!-- LEFT SIDEBAR: Node Library -->
+  <div id="sidebar">
+    <div style="padding:7px 10px 5px;font-size:.55rem;color:var(--tx3);letter-spacing:.1em;border-bottom:1px solid #222;">NODE LIBRARY</div>
+    <div style="overflow-y:auto;flex:1;">
+      <div class="sb-section">
+        <div class="sb-hdr">Loaders</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('api_key')"><div class="sb-dot" style="background:var(--c-api)"></div>Load API Key</div>
+          <div class="sb-item" onclick="addNodeAt('model_select')"><div class="sb-dot" style="background:var(--c-model)"></div>Load Checkpoint</div>
+          <div class="sb-item" onclick="addNodeAt('ref_image')"><div class="sb-dot" style="background:var(--c-image)"></div>Load Image</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Conditioning</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('prompt')"><div class="sb-dot" style="background:var(--c-cond)"></div>CLIP Text Encode</div>
+          <div class="sb-item" onclick="addNodeAt('neg_prompt')"><div class="sb-dot" style="background:#c04060"></div>CLIP Text Encode (neg)</div>
+          <div class="sb-item" onclick="addNodeAt('camera')"><div class="sb-dot" style="background:var(--c-camera)"></div>Camera Settings</div>
+          <div class="sb-item" onclick="addNodeAt('lighting')"><div class="sb-dot" style="background:#ffb347"></div>Lighting Rig</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Latent</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('empty_latent')"><div class="sb-dot" style="background:#9a6ee0"></div>Empty Latent Image</div>
+          <div class="sb-item" onclick="addNodeAt('vae_decode')"><div class="sb-dot" style="background:#ff9cf9"></div>VAE Decode</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Primitives</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('seed')"><div class="sb-dot" style="background:var(--c-int)"></div>Integer (Seed)</div>
+          <div class="sb-item" onclick="addNodeAt('ratio')"><div class="sb-dot" style="background:#6090e0"></div>String (Ratio)</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Sampling</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('generator')"><div class="sb-dot" style="background:var(--acc)"></div>KSampler (Gemini)</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Image</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('output')"><div class="sb-dot" style="background:var(--c-image)"></div>Preview Image</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Mask</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('mask_edit')"><div class="sb-dot" style="background:var(--c-mask)"></div>Inpaint Editor</div>
+        </div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-hdr">Utils</div>
+        <div class="sb-items">
+          <div class="sb-item" onclick="addNodeAt('note')"><div class="sb-dot" style="background:#666"></div>Note</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-area">
+    <div id="canvas"
+      oncontextmenu="onCanvasCtx(event)"
+      ondblclick="onCanvasDbl(event)">
+      <div id="tlayer">
+        <svg id="svg-wires" xmlns="http://www.w3.org/2000/svg">
+          <g id="wires-g"></g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Wire drag (fixed, outside transform) -->
+    <svg id="wire-overlay" xmlns="http://www.w3.org/2000/svg">
+      <path id="wdp" d="" fill="none" stroke-width="2" stroke-dasharray="5,3" opacity=".8"/>
+    </svg>
+
+    <!-- Minimap -->
+    <div id="mm"><canvas id="mmc" width="130" height="80"></canvas></div>
+  </div>
+
+  <!-- RIGHT PANEL: Queue -->
+  <div id="rightpanel">
+    <div class="rp-tab-row">
+      <div class="rp-tab on" onclick="rpTab('queue',this)">QUEUE</div>
+      <div class="rp-tab" onclick="rpTab('history',this)">HISTORY</div>
+    </div>
+    <div class="rp-body" id="rp-queue">
+      <div style="font-size:.57rem;color:var(--tx3);text-align:center;padding:20px 0;">
+        ▶ Queue Prompt 을 누르거나<br>더블클릭으로 실행
+      </div>
+    </div>
+    <div class="rp-body" id="rp-history" style="display:none"></div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar">
+  <span>우클릭: 컨텍스트 메뉴 | 더블클릭: Queue Prompt | Alt+드래그: 패닝</span>
+  <span id="sb-msg"></span>
+  <span id="sb-zoom">100%</span>
+</div>
+
+</div><!-- #app -->
+
+<!-- Canvas right-click -->
+<div id="ctx-canvas" class="ctx">
+  <div class="ctx-hdr">ADD NODE</div>
+  <div class="ctx-item" onclick="ctxAdd('api_key')"><div class="ctx-dot" style="background:var(--c-api)"></div>Load API Key<span class="ctx-sub">Loaders</span></div>
+  <div class="ctx-item" onclick="ctxAdd('model_select')"><div class="ctx-dot" style="background:var(--c-model)"></div>Load Checkpoint<span class="ctx-sub">Loaders</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAdd('prompt')"><div class="ctx-dot" style="background:var(--c-cond)"></div>CLIP Text Encode<span class="ctx-sub">Conditioning</span></div>
+  <div class="ctx-item" onclick="ctxAdd('neg_prompt')"><div class="ctx-dot" style="background:#c04060"></div>CLIP Text Encode (neg)<span class="ctx-sub">Conditioning</span></div>
+  <div class="ctx-item" onclick="ctxAdd('camera')"><div class="ctx-dot" style="background:var(--c-camera)"></div>Camera Settings<span class="ctx-sub">Conditioning</span></div>
+  <div class="ctx-item" onclick="ctxAdd('lighting')"><div class="ctx-dot" style="background:#ffb347"></div>Lighting Rig<span class="ctx-sub">Conditioning</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAdd('ref_image')"><div class="ctx-dot" style="background:var(--c-image)"></div>Load Image<span class="ctx-sub">Loaders</span></div>
+  <div class="ctx-item" onclick="ctxAdd('empty_latent')"><div class="ctx-dot" style="background:#9a6ee0"></div>Empty Latent Image<span class="ctx-sub">Latent</span></div>
+  <div class="ctx-item" onclick="ctxAdd('seed')"><div class="ctx-dot" style="background:var(--c-int)"></div>Integer (Seed)<span class="ctx-sub">Primitives</span></div>
+  <div class="ctx-item" onclick="ctxAdd('ratio')"><div class="ctx-dot" style="background:#6090e0"></div>String (Ratio)<span class="ctx-sub">Primitives</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAdd('generator')"><div class="ctx-dot" style="background:var(--acc)"></div>KSampler (Gemini)<span class="ctx-sub">Sampling</span></div>
+  <div class="ctx-item" onclick="ctxAdd('vae_decode')"><div class="ctx-dot" style="background:#ff9cf9"></div>VAE Decode<span class="ctx-sub">Latent</span></div>
+  <div class="ctx-item" onclick="ctxAdd('output')"><div class="ctx-dot" style="background:var(--c-image)"></div>Preview Image<span class="ctx-sub">Image</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAdd('mask_edit')"><div class="ctx-dot" style="background:var(--c-mask)"></div>Inpaint Editor<span class="ctx-sub">Mask</span></div>
+  <div class="ctx-item" onclick="ctxAdd('note')"><div class="ctx-dot" style="background:#666"></div>Note<span class="ctx-sub">Utils</span></div>
+</div>
+
+<!-- Node right-click -->
+<div id="ctx-node" class="ctx">
+  <div class="ctx-hdr" id="ctx-node-title">NODE</div>
+  <div class="ctx-item" onclick="nodeCtxDo('clone')">Clone</div>
+  <div class="ctx-item" onclick="nodeCtxDo('bypass')">Mute / Bypass</div>
+  <div class="ctx-item" onclick="nodeCtxDo('collapse')">Collapse / Expand</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="nodeCtxDo('c-yellow')"><div class="ctx-dot" style="background:#b09030"></div>Color: Yellow</div>
+  <div class="ctx-item" onclick="nodeCtxDo('c-red')"><div class="ctx-dot" style="background:#a02020"></div>Color: Red</div>
+  <div class="ctx-item" onclick="nodeCtxDo('c-teal')"><div class="ctx-dot" style="background:#206060"></div>Color: Teal</div>
+  <div class="ctx-item" onclick="nodeCtxDo('c-reset')">Color: Reset</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="nodeCtxDo('remove')">Remove Node</div>
+</div>
+
+<input type="file" id="fi-wf" class="fi" accept=".json" onchange="onWFLoad(event)">
+<input type="file" id="fi-img" class="fi" accept="image/*">
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let PX=0,PY=0,ZM=1;
+let isPan=false,panS={x:0,y:0};
+let dragNid=null,dragOff={x:0,y:0};
+let nodes={},nSeq=0;
+let wires=[],wSeq=0;
+let sel=new Set();
+let ctxP={x:200,y:200};
+let ctxNid=null;
+let wireDrag=null; // {nid,slot,type,dir,sx,sy}  — sx/sy = screen coords
+let API_KEY='';
+const DEF_MODEL='gemini-3.1-flash-image-preview';
+
+// Type → CSS var name
+const TC={
+  API:'var(--c-api)',MODEL:'var(--c-model)',COND:'var(--c-cond)',
+  IMAGE:'var(--c-image)',MASK:'var(--c-mask)',STRING:'var(--c-string)',
+  INT:'var(--c-int)',FLOAT:'var(--c-float)',CAMERA:'var(--c-camera)',
+  CLIP:'#ffe97a',VAE:'#ff9cf9',LATENT:'#9a6ee0',LIGHTING:'#ffb347'
+};
+const TCRAW={
+  API:'#f0c040',MODEL:'#ff6b35',COND:'#e05050',
+  IMAGE:'#00e396',MASK:'#ff4560',STRING:'#4ecdc4',
+  INT:'#8888aa',FLOAT:'#aaaacc',CAMERA:'#a78bfa',
+  CLIP:'#ffe97a',VAE:'#ff9cf9',LATENT:'#9a6ee0',LIGHTING:'#ffb347'
+};
+
+// ─── Node definitions ────────────────────────────────────
+// inputs/outputs: [{n:name, t:type}]
+// widgets: [{id, lbl, kind, ...}]
+const DEFS={
+  api_key:{
+    label:'Load API Key', stripe:'#f0c040',
+    ins:[],
+    outs:[{n:'API_KEY',t:'API'}],
+    widgets:[{id:'apiKey',lbl:'api_key',kind:'text',pw:true,ph:'AIza...',def:''}]
+  },
+  model_select:{
+    label:'Load Checkpoint', stripe:'#ff6b35',
+    ins:[{n:'api_key',t:'API'}],
+    outs:[{n:'MODEL',t:'MODEL'},{n:'CLIP',t:'CLIP'},{n:'VAE',t:'VAE'}],
+    widgets:[{id:'model',lbl:'ckpt_name',kind:'select',
+      opts:['gemini-2.5-flash-image','gemini-3.1-flash-image-preview','gemini-3-pro-image-preview'],
+      lbls:['나노바나나  ≈₩54/장','나노바나나 2  ≈₩97/장','나노바나나 PRO  ≈₩195/장'],
+      def:'gemini-3.1-flash-image-preview'}]
+  },
+  prompt:{
+    label:'CLIP Text Encode', stripe:'#e05050',
+    ins:[{n:'clip',t:'CLIP'}],
+    outs:[{n:'CONDITIONING',t:'COND'}],
+    widgets:[
+      {id:'text',lbl:'text',kind:'textarea',rows:4,ph:'장면을 묘사하세요...',def:''},
+      {id:'style',lbl:'style',kind:'select',
+       opts:['cinematic','photo','illustration','oil painting','watercolor','3d render','anime','noir','editorial','concept art'],
+       def:'cinematic'}
+    ]
+  },
+  neg_prompt:{
+    label:'CLIP Text Encode (neg)', stripe:'#c04060',
+    ins:[{n:'clip',t:'CLIP'}],
+    outs:[{n:'CONDITIONING',t:'COND'}],
+    widgets:[{id:'text',lbl:'text',kind:'textarea',rows:3,ph:'blurry, low quality...',def:''}]
+  },
+  camera:{
+    label:'Camera Settings', stripe:'#a78bfa',
+    ins:[],
+    outs:[{n:'CAMERA',t:'CAMERA'}],
+    widgets:[{id:'_camrig',kind:'camrig'}]
+  },
+  lighting:{
+    label:'Lighting Rig', stripe:'#ffb347',
+    ins:[],
+    outs:[{n:'LIGHTING',t:'LIGHTING'}],
+    widgets:[{id:'_lightrig',kind:'lightrig'}]
+  },
+  ref_image:{
+    label:'Load Image', stripe:'#00e396',
+    ins:[],
+    outs:[{n:'IMAGE',t:'IMAGE'}],
+    widgets:[
+      {id:'role',lbl:'reference_role',kind:'select',
+       opts:['style','subject','object','motion'],
+       lbls:['스타일 레퍼런스','주제(인물) 레퍼런스','오브젝트 레퍼런스','모션 레퍼런스'],
+       def:'style'},
+      {id:'img',lbl:'image',kind:'imgprev',def:null}
+    ]
+  },
+  seed:{
+    label:'Integer (Seed)', stripe:'#8888aa',
+    ins:[],
+    outs:[{n:'INT',t:'INT'}],
+    widgets:[{id:'seed',lbl:'value',kind:'int',min:-1,max:999999999,step:1,def:-1,rand:true}]
+  },
+  ratio:{
+    label:'String (Ratio)', stripe:'#6090e0',
+    ins:[],
+    outs:[{n:'STRING',t:'STRING'}],
+    widgets:[{id:'ratio',lbl:'value',kind:'pills',opts:['16:9','9:16','1:1','4:3','3:4','2.39:1'],def:'16:9'}]
+  },
+  empty_latent:{
+    label:'Empty Latent Image', stripe:'#9a6ee0',
+    ins:[],
+    outs:[{n:'LATENT',t:'LATENT'}],
+    widgets:[
+      {id:'width', lbl:'width',  kind:'int',min:256,max:2048,step:64,def:1024},
+      {id:'height',lbl:'height', kind:'int',min:256,max:2048,step:64,def:1024},
+      {id:'batch', lbl:'batch_size',kind:'int',min:1,max:4,step:1,def:1}
+    ]
+  },
+  generator:{
+    label:'KSampler (Gemini)', stripe:'#e8ff47',
+    ins:[
+      {n:'api_key',      t:'API'},
+      {n:'model',        t:'MODEL'},
+      {n:'positive',     t:'COND'},
+      {n:'negative',     t:'COND'},
+      {n:'camera',       t:'CAMERA'},
+      {n:'lighting',     t:'LIGHTING'},
+      {n:'reference',    t:'IMAGE'},
+    ],
+    outs:[{n:'LATENT',t:'LATENT'}],
+    widgets:[
+      {id:'seed',    lbl:'seed',         kind:'int',  min:-1,max:999999999,step:1,def:-1,rand:true},
+      {id:'steps',   lbl:'steps',        kind:'int',  min:1,max:50,step:1,def:20},
+      {id:'cfg',     lbl:'cfg',          kind:'float',min:1,max:20,step:0.5,def:7.0,fmt:'{v}'},
+      {id:'sampler', lbl:'sampler_name', kind:'select',
+        opts:['nano','nano2','nanoPro'],
+        lbls:['나노바나나 (2.5-flash)','나노바나나 2 (3.1-flash)','나노바나나 PRO (3-pro)'],
+        def:'nano2'},
+      {id:'ratio',   lbl:'aspect_ratio', kind:'pills',
+        opts:['1:1','16:9','9:16','4:3','3:4'],def:'1:1'},      {id:'_stat',kind:'status'}
+    ]
+  },
+  vae_decode:{
+    label:'VAE Decode', stripe:'#ff9cf9',
+    ins:[{n:'samples',t:'LATENT'},{n:'vae',t:'VAE'}],
+    outs:[{n:'IMAGE',t:'IMAGE'}],
+    widgets:[]
+  },
+  output:{
+    label:'Preview Image', stripe:'#00e396',
+    ins:[{n:'images',t:'IMAGE'}],
+    outs:[],
+    widgets:[
+      {id:'_outimg',kind:'outimg'},
+      {id:'_outbtns',kind:'outbtns'}
+    ]
+  },
+  mask_edit:{
+    label:'Inpaint Editor', stripe:'#ff4560',
+    ins:[
+      {n:'api_key', t:'API'},
+      {n:'model',   t:'MODEL'},
+      {n:'image',   t:'IMAGE'},
+      {n:'positive',t:'COND'},
+    ],
+    outs:[{n:'IMAGE',t:'IMAGE'}],
+    widgets:[
+      {id:'baseImg',lbl:'base_image',kind:'imgprev',def:null,baseMode:true},
+      {id:'mask',lbl:'mask_draw',kind:'maskdraw'},
+      {id:'masktools',kind:'masktool'},
+      {id:'brushSize',lbl:'brush_size',kind:'int',min:5,max:120,step:1,def:30},
+      {id:'strength',lbl:'inpaint_strength',kind:'int',min:1,max:10,step:1,def:7},
+      {id:'_run',kind:'genrun',lbl:'Apply Inpaint'},
+      {id:'_stat',kind:'status'}
+    ]
+  },
+  note:{
+    label:'Note', stripe:'#666',
+    ins:[],outs:[],
+    widgets:[{id:'text',lbl:'',kind:'textarea',rows:5,ph:'메모...',def:''}]
+  }
+};
+
+// ─── Coordinate helpers ──────────────────────────────────
+function s2c(sx,sy){
+  const r=canvasRect();
+  return {x:(sx-r.left-PX)/ZM, y:(sy-r.top-PY)/ZM};
+}
+function canvasRect(){return document.getElementById('canvas').getBoundingClientRect();}
+function applyTx(){
+  document.getElementById('tlayer').style.transform=`translate(${PX}px,${PY}px) scale(${ZM})`;
+  document.getElementById('sb-zoom').textContent=Math.round(ZM*100)+'%';
+  redrawAllWires();
+  redrawMM();
+}
+
+// ─── Get socket screen position ─────────────────────────
+function sockScreenPos(nid,slotName,dir){
+  const el=document.getElementById('nd-'+nid);
+  if(!el) return null;
+  const sock=el.querySelector(`.sock[data-slot="${slotName}"][data-dir="${dir}"]`);
+  if(!sock) return null;
+  const sr=sock.getBoundingClientRect();
+  return {x:sr.left+sr.width/2, y:sr.top+sr.height/2};
+}
+function sockCanvasPos(nid,slotName,dir){
+  const sp=sockScreenPos(nid,slotName,dir);
+  if(!sp) return null;
+  const r=canvasRect();
+  return {x:(sp.x-r.left-PX)/ZM, y:(sp.y-r.top-PY)/ZM};
+}
+
+// ═══════════════════════════════════════════════════════════
+// NODE CREATION
+// ═══════════════════════════════════════════════════════════
+function mkNode(defKey,cx,cy){
+  const def=DEFS[defKey]; if(!def) return null;
+  const id='n'+(++nSeq);
+  const data={};
+  (def.widgets||[]).forEach(w=>{ if(w.def!==undefined) data[w.id]=w.def; });
+  nodes[id]={id,def:defKey,x:cx,y:cy,data,collapsed:false,bypassed:false,color:null,_outImg:null,_outMime:null};
+  renderNode(id);
+  return id;
+}
+
+function updateCkptLabel(nid){
+  if(!nid||!nodes[nid]) return;
+  if(nodes[nid].def==='generator'){
+    const el=document.getElementById('ckptlbl-'+nid);
+    if(!el) return;
+    const ckpt=upstream(nid,'model');
+    const modelVal=ckpt?.data?.model||null;
+    const LABELS={'gemini-2.5-flash-image':'나노바나나  (2.5-flash)','gemini-3.1-flash-image-preview':'나노바나나 2  (3.1-flash)','gemini-3-pro-image-preview':'나노바나나 PRO  (3-pro)'};
+    el.textContent=modelVal?(LABELS[modelVal]||modelVal):'— 체크포인트 미연결 —';
+    el.style.color=modelVal?'var(--acc2)':'var(--tx3)';
+  }
+}
+
+function renderNode(id){
+  const n=nodes[id];
+  const def=DEFS[n.def];
+  let old=document.getElementById('nd-'+id);
+  if(old) old.remove();
+
+  const el=document.createElement('div');
+  el.className='node'+(n.collapsed?' collapsed':'')+(n.bypassed?' bypassed':'');
+  el.id='nd-'+id;
+  el.dataset.nid=id;
+  el.style.cssText=`left:${n.x}px;top:${n.y}px;${n.color?'border-color:'+n.color+';':''}`;
+
+  // Title bar
+  const bar=document.createElement('div');
+  bar.className='node-title-bar';
+  bar.innerHTML=`
+    <div class="node-color-stripe" style="background:${def.stripe||'#555'};min-height:14px;"></div>
+    <div class="node-label">${def.label}</div>
+    <button class="node-btn" onclick="toggleCollapse('${id}',event)" title="Collapse">${n.collapsed?'▸':'▾'}</button>
+    <button class="node-btn" onclick="removeNode('${id}',event)" title="Remove">✕</button>
+  `;
+  bar.addEventListener('mousedown',e=>startDrag(id,e));
+  bar.addEventListener('contextmenu',e=>openNodeCtx(id,e));
+  el.appendChild(bar);
+
+  if(!n.collapsed){
+    const content=document.createElement('div');
+    content.className='node-content';
+    content.id='nc-'+id;
+
+    // Build slot rows + widget rows
+    const inSlots=def.ins||[];
+    const outSlots=def.outs||[];
+    const maxSlots=Math.max(inSlots.length,outSlots.length);
+
+    // Slot rows
+    for(let i=0;i<maxSlots;i++){
+      const inp=inSlots[i], out=outSlots[i];
+      const row=document.createElement('div');
+      row.className='slot-row';
+      row.style.minHeight='20px';
+
+      if(inp){
+        row.innerHTML+=`
+          <div class="slot-in">
+            <div class="sock in-sock conn-check"
+              data-nid="${id}" data-slot="${inp.n}" data-t="${inp.t}" data-dir="input"
+              style="color:${TCRAW[inp.t]||'#888'}"
+              title="${inp.n} (${inp.t})"></div>
+            <span class="slot-lbl" style="padding-left:12px;color:${TCRAW[inp.t]||'#888'}">${inp.n}</span>
+          </div>`;
+      } else {
+        row.innerHTML+=`<div class="slot-in"></div>`;
+      }
+      if(out){
+        row.innerHTML+=`
+          <div class="slot-out">
+            <span class="slot-lbl out-lbl" style="padding-right:12px;color:${TCRAW[out.t]||'#888'}">${out.n}</span>
+            <div class="sock out-sock conn-check"
+              data-nid="${id}" data-slot="${out.n}" data-t="${out.t}" data-dir="output"
+              style="color:${TCRAW[out.t]||'#888'}"
+              title="${out.n} (${out.t})"></div>
+          </div>`;
+      } else {
+        row.innerHTML+=`<div class="slot-out"></div>`;
+      }
+      content.appendChild(row);
+    }
+
+    // Separator if there are widgets
+    if((def.widgets||[]).filter(w=>!['status','genrun','outbtns','outimg','maskdraw','masktool'].includes(w.kind)).length>0){
+      const sep=document.createElement('div');sep.className='w-sep';content.appendChild(sep);
+    }
+
+    // Widgets
+    (def.widgets||[]).forEach(w=>{
+      const wr=document.createElement('div');
+      wr.className='w-row';
+      wr.id='wr-'+id+'-'+w.id;
+      wr.innerHTML=buildWidget(id,w);
+      content.appendChild(wr);
+    });
+
+    el.appendChild(content);
+  }
+
+  document.getElementById('tlayer').appendChild(el);
+
+  // Attach socket events AFTER DOM insertion
+  el.querySelectorAll('.sock').forEach(sock=>{
+    const nid2=sock.dataset.nid, slot=sock.dataset.slot, t=sock.dataset.t, dir=sock.dataset.dir;
+    sock.addEventListener('pointerdown', e=>onSockDown(e,nid2,slot,t,dir));
+  });
+
+  // Click to select
+  el.addEventListener('mousedown',e=>{
+    if(e.target.classList.contains('sock')) return;
+    if(e.target.closest('.node-title-bar')) return;
+    selectNode(id,e.shiftKey);
+  });
+
+  setTimeout(()=>{
+    refreshSocks();
+    redrawAllWires();
+    if(n.def==='generator') updateCkptLabel(id);
+    if(n.def==='camera'||n.def==='lighting') setTimeout(()=>init3dRigs(),200);
+  },30);
+}
+
+function buildWidget(nid,w){
+  const n=nodes[nid];
+  const v=n.data[w.id];
+
+  switch(w.kind){
+    case 'text': return `
+      ${w.lbl?`<div class="w-lbl">${w.lbl}</div>`:''}
+      <input class="w-inp" type="${w.pw?'password':'text'}" value="${esc(v||'')}"
+        placeholder="${w.ph||''}"
+        oninput="nd('${nid}','${w.id}',this.value)${w.id==='apiKey'?';syncApiKey()':''}">`;
+
+    case 'textarea': return `
+      ${w.lbl?`<div class="w-lbl">${w.lbl}</div>`:''}
+      <textarea class="w-inp" rows="${w.rows||3}" placeholder="${w.ph||''}"
+        oninput="nd('${nid}','${w.id}',this.value)">${esc(v||'')}</textarea>`;
+
+    case 'select':{
+      const opts=(w.opts||[]).map((o,i)=>`<option value="${o}" ${v===o?'selected':''}>${w.lbls?.[i]||o}</option>`).join('');
+      return `${w.lbl?`<div class="w-lbl">${w.lbl}</div>`:''}
+        <select class="w-sel" onchange="nd('${nid}','${w.id}',this.value)">${opts}</select>`;}
+
+    case 'int':
+    case 'float':{
+      const fmt=w.fmt||'{v}';
+      const disp=fmt.replace('{v}',w.kind==='float'?parseFloat(v).toFixed(1):v);
+      return `<div class="w-lbl">${w.lbl||''}</div>
+        <div class="w-slider-r">
+          <input class="w-sl" type="range" min="${w.min}" max="${w.max}" step="${w.step||1}" value="${v}"
+            oninput="nd('${nid}','${w.id}',${w.kind==='float'?'parseFloat':'parseInt'}(this.value));
+              this.nextElementSibling.textContent='${fmt.split('{v}')[0]}'+${w.kind==='float'?'parseFloat(this.value).toFixed(1)':'this.value'}+'${fmt.split('{v}')[1]||''}'">
+          <span class="w-v">${disp}</span>
+          ${w.rand?`<button class="w-pill" style="padding:1px 5px" onclick="rndSeed('${nid}','${w.id}')">🎲</button>`:''}
+        </div>`;}
+
+    case 'pills':{
+      const pills=(w.opts||[]).map(o=>`<div class="w-pill${v===o?' on':''}" onclick="setPill('${nid}','${w.id}','${o}',this)">${o}</div>`).join('');
+      return `<div class="w-lbl">${w.lbl||''}</div><div class="w-pills">${pills}</div>`;}
+
+    case 'imgprev':{
+      const hasImg=n.data[w.id+'_b64'];
+      const fid='fi-'+nid+'-'+w.id;
+      return `${w.lbl?`<div class="w-lbl">${w.lbl}</div>`:''}
+        <div class="w-imgprev" onclick="document.getElementById('${fid}').click()">
+          ${hasImg?`<img src="data:${n.data[w.id+'_mime']||'image/jpeg'};base64,${hasImg}">`
+            :`<div class="w-imgph">클릭하여<br>이미지 선택</div>`}
+        </div>
+        <input type="file" accept="image/*" class="fi" id="${fid}" onchange="onImgLoad('${nid}','${w.id}',event)">
+        ${hasImg?`<div style="margin-top:3px"><button class="w-pill" style="width:100%" onclick="clearImg('${nid}','${w.id}')">✕ 제거</button></div>`:''}
+      `;}
+
+    case 'camrig':
+      return `<div class="node-rig-panel" id="camrig-panel-\${nid}">
+        <div style="font-size:.48rem;letter-spacing:.1em;color:var(--tx3);margin-bottom:4px;padding:0 4px;">CAMERA RIG</div>
+        <div style="position:relative;border-radius:6px;overflow:hidden;background:#060610;border:1px solid var(--nborder);margin-bottom:5px;">
+          <div id="gCamRig3d" style="width:100%;height:200px;position:relative;"></div>
+          <div id="gCamPreviewWrap" style="position:absolute;top:5px;right:32px;width:80px;height:60px;border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,.15);background:#000;z-index:3;">
+            <canvas id="gCamPreview" width="80" height="60" style="width:100%;height:100%;display:block;"></canvas>
+            <div style="position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:.36rem;color:rgba(255,255,255,.35);">CAM POV</div>
+          </div>
+          <div style="position:absolute;top:5px;right:5px;font-size:.5rem;color:var(--acc);background:rgba(232,255,71,.08);border:1px solid rgba(232,255,71,.2);padding:1px 5px;border-radius:3px;z-index:2;" id="gAngleLbl">아이레벨</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;padding:0 4px;">
+          <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">수량</span>
+          <input type="range" min="1" max="6" value="1" id="gCamCount" style="flex:1;accent-color:var(--acc4);" oninput="onCamCountChange(this.value)">
+          <span style="font-size:.58rem;color:var(--tx);width:14px;text-align:right;" id="gCamCountVal">1</span>
+        </div>
+        <div id="gCamInfoTxt" style="font-size:.5rem;color:var(--tx2);padding:0 4px 4px;min-height:14px;"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:0 4px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">가로</span>
+            <input type="range" min="-180" max="180" value="0" id="gCamYawSl" style="flex:1;accent-color:#64a0ff;" oninput="onCamRigChange('yaw',this.value)">
+            <input type="number" min="-180" max="180" value="0" id="gCamYawNum" class="orbit-num" oninput="onCamRigChange('yaw',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">세로</span>
+            <input type="range" min="-90" max="90" value="0" id="gCamPitchSl" style="flex:1;accent-color:#c864ff;" oninput="onCamRigChange('pitch',this.value)">
+            <input type="number" min="-90" max="90" value="0" id="gCamPitchNum" class="orbit-num" oninput="onCamRigChange('pitch',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">롤</span>
+            <input type="range" min="-180" max="180" value="0" id="gCamRollSl" style="flex:1;accent-color:#a78bfa;" oninput="onCamRigChange('roll',this.value)">
+            <input type="number" min="-180" max="180" value="0" id="gCamRollNum" class="orbit-num" oninput="onCamRigChange('roll',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">거리</span>
+            <input type="range" min="2" max="12" value="7" id="gCamDistSl" style="flex:1;accent-color:#e8ff47;" oninput="onCamRigChange('dist',this.value)">
+            <input type="number" min="2" max="12" value="7" id="gCamDistNum" class="orbit-num" oninput="onCamRigChange('dist',this.value)">
+          </div>
+        </div>
+        <div class="preset-row" style="margin-top:5px;padding:0 4px;">
+          <button class="pr-btn" onclick="setCamPreset(0,45,'하이앵글')">하이앵글</button>
+          <button class="pr-btn" onclick="setCamPreset(0,0,'아이레벨')">아이레벨</button>
+          <button class="pr-btn" onclick="setCamPreset(0,-30,'로우앵글')">로우앵글</button>
+          <button class="pr-btn" onclick="setCamPreset(0,80,'버즈아이')">버즈아이</button>
+          <button class="pr-btn" onclick="setCamPreset(0,-75,'웜즈아이')">웜즈아이</button>
+          <button class="pr-btn" onclick="setCamPreset(30,15,'더치',15)">더치</button>
+        </div>
+      </div>`;
+
+    case 'lightrig':
+      return `<div class="node-rig-panel" id="lightrig-panel-\${nid}">
+        <div style="font-size:.48rem;letter-spacing:.1em;color:var(--tx3);margin-bottom:4px;padding:0 4px;margin-top:6px;">MULTI-LIGHTING</div>
+        <div style="position:relative;border-radius:6px;overflow:hidden;background:#060610;border:1px solid var(--nborder);margin-bottom:5px;">
+          <div style="position:absolute;top:5px;right:5px;z-index:2;display:flex;gap:3px;align-items:center;">
+            <div id="gLightSelector" style="display:flex;gap:3px;"></div>
+            <div id="gActiveLightDot" style="width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid rgba(255,255,255,.4);cursor:pointer;" onclick="cycleActiveLight()"></div>
+          </div>
+          <div id="gLightRig3d" style="width:100%;height:180px;position:relative;"></div>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:5px;padding:0 4px;">
+          <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">수량</span>
+          <input type="range" min="1" max="6" value="1" id="gLightCount" style="flex:1;accent-color:var(--acc2);" oninput="onLightCountChange(this.value)">
+          <span style="font-size:.58rem;color:var(--tx);width:14px;text-align:right;" id="gLightCountVal">1</span>
+        </div>
+        <div style="display:flex;gap:3px;margin-bottom:5px;padding:0 4px;">
+          <button id="gLTypePoint" onclick="setLightType('g','point')" style="flex:1;padding:3px 0;border-radius:5px;font-size:.55rem;border:1px solid rgba(251,191,36,.6);background:rgba(251,191,36,.2);color:#fbbf24;cursor:pointer;">Point</button>
+          <button id="gLTypeSpot" onclick="setLightType('g','spot')" style="flex:1;padding:3px 0;border-radius:5px;font-size:.55rem;border:1px solid var(--nborder);background:var(--nb);color:var(--tx3);cursor:pointer;">Spot</button>
+          <button id="gLTypeArea" onclick="setLightType('g','area')" style="flex:1;padding:3px 0;border-radius:5px;font-size:.55rem;border:1px solid var(--nborder);background:var(--nb);color:var(--tx3);cursor:pointer;">Area</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;padding:0 4px;">
+          <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">수량</span>
+          <input type="range" min="1" max="6" value="1" id="gCamCount" style="flex:1;accent-color:var(--acc4);" oninput="onCamCountChange(this.value)">
+          <span style="font-size:.58rem;color:var(--tx);width:14px;text-align:right;" id="gCamCountVal">1</span>
+        </div>
+        <div id="gCamInfoTxt" style="font-size:.5rem;color:var(--tx2);padding:0 4px 4px;min-height:14px;"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:0 4px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">가로</span>
+            <input type="range" min="0" max="360" value="0" id="gLRotHSl" style="flex:1;accent-color:#64a0ff;" oninput="setLightRotH('g',this.value)">
+            <input type="number" class="orbit-num" id="gLRotHNum" value="0" min="0" max="360" step="1" oninput="setLightRotH('g',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">세로</span>
+            <input type="range" min="-90" max="90" value="30" id="gLRotVSl" style="flex:1;accent-color:#c864ff;" oninput="setLightRotV('g',this.value)">
+            <input type="number" class="orbit-num" id="gLRotVNum" value="30" min="-90" max="90" step="1" oninput="setLightRotV('g',this.value)">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-size:.52rem;color:var(--tx2);width:30px;flex-shrink:0;">거리</span>
+            <input type="range" min="1" max="10" value="5" id="gLDistSl" style="flex:1;accent-color:#e8ff47;" oninput="setLightDist('g',this.value)">
+            <input type="number" class="orbit-num" id="gLDistNum" value="5" min="1" max="10" step="1" oninput="setLightDist('g',this.value)">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;padding:0 4px;">
+          <div>
+            <div style="font-size:.48rem;color:var(--tx3);margin-bottom:3px;">COLOR</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="color" id="gColorPick" value="#ffffff" style="width:22px;height:18px;border:none;border-radius:3px;cursor:pointer;padding:0;" oninput="setLightColorPick('g',this.value)">
+              <input type="text" id="gColorHex" value="#FFFFFF" maxlength="7" style="flex:1;background:var(--nb);border:1px solid var(--nborder);border-radius:3px;color:var(--tx);font-size:.5rem;padding:2px 4px;outline:none;" oninput="setLightColorHex('g',this.value)">
+            </div>
+          </div>
+          <div>
+            <div style="font-size:.48rem;color:var(--tx3);margin-bottom:3px;">BRIGHT</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="range" min="1" max="10" value="5" id="gBrightSl" style="flex:1;accent-color:var(--acc2);" oninput="setLightBright('g',this.value)">
+              <input type="number" id="gBrightNum" value="5" min="1" max="10" step="1" style="width:26px;background:var(--nb);border:1px solid var(--nborder);border-radius:3px;color:var(--tx);font-size:.5rem;text-align:center;padding:1px 2px;outline:none;" oninput="setLightBright('g',this.value)">
+            </div>
+          </div>
+        </div>
+        <div class="light-presets" style="margin-top:6px;padding:0 4px 4px;">
+          <button class="lp-btn" onclick="setLightPreset('g','top')">Top</button>
+          <button class="lp-btn" onclick="setLightPreset('g','front')">Front</button>
+          <button class="lp-btn" onclick="setLightPreset('g','right')">Right</button>
+          <button class="lp-btn" onclick="setLightPreset('g','left')">Left</button>
+          <button class="lp-btn" onclick="setLightPreset('g','back')">역광</button>
+          <button class="lp-btn" onclick="setLightPreset('g','bottom')">Bottom</button>
+        </div>
+      </div>`;
+
+    case 'ckptlabel':
+      return `<div class="w-ckptlbl" id="ckptlbl-\${nid}">— 연결 없음 —</div>`;
+
+    case 'genrun':
+      return `<button class="w-run idle" id="gbtn-${nid}" onclick="${n.def==='mask_edit'?`runMask('${nid}')`:`runGen('${nid}')`}">${w.lbl||'Queue Prompt'}</button>`;
+
+    case 'status':
+      return `<div class="w-stat" id="gst-${nid}"></div>`;
+
+    case 'outimg':{
+      const d=n._outImg,m=n._outMime;
+      const ratio=n.data._ratio||'16:9';
+      const cls={'16:9':'r169','9:16':'r916','1:1':'r11','4:3':'r43','3:4':'r34'}[ratio]||'r169';
+      return `<div class="w-outimg ${cls}" id="outarea-${nid}">
+        ${d?`<img src="data:${m};base64,${d}" id="oimg-${nid}">`
+          :`<div class="w-outph"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".25"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M3 15l5-5 4 4 3-3 4 4"/></svg><p>images</p></div>`}
+      </div>`;}
+
+    case 'outbtns':
+      return `<div class="w-btns">
+        <button class="w-obtn hl" onclick="dlOut('${nid}')">↓ Save</button>
+        <button class="w-obtn" onclick="toMask('${nid}')">→ Inpaint</button>
+        <button class="w-obtn" onclick="cpOut('${nid}')">📋</button>
+      </div>`;
+
+    case 'maskdraw':{
+      const hasBase=n.data.baseImg_b64||n._baseFromWire;
+      return `<div class="w-maskwrap" id="mwrap-${nid}">
+        ${hasBase?`<img class="mbase" src="${n._baseFromWire||('data:'+(n.data.baseImg_mime||'image/jpeg')+';base64,'+n.data.baseImg_b64)}" id="mbase-${nid}">`:''}
+        <canvas id="mc-${nid}"></canvas>
+      </div>`;}
+
+    case 'masktool':
+      return `<div class="w-mtools">
+        <button class="w-mtool on" id="mt-d-${nid}" onclick="setMT('${nid}','draw',this)">🖌 Draw</button>
+        <button class="w-mtool" id="mt-e-${nid}" onclick="setMT('${nid}','erase',this)">◻ Erase</button>
+        <button class="w-mtool" onclick="clearMask('${nid}')">✕ Clear</button>
+      </div>`;
+
+    default: return '';
+  }
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ═══════════════════════════════════════════════════════════
+// WIDGET ACTIONS
+// ═══════════════════════════════════════════════════════════
+function nd(nid,key,val){
+  if(nodes[nid]) nodes[nid].data[key]=val;
+  // checkpoint 모델 변경 → 연결된 generator label 갱신
+  if(nodes[nid]?.def==='model_select'){
+    Object.keys(nodes).filter(id=>nodes[id].def==='generator').forEach(gid=>updateCkptLabel(gid));
+  }
+}
+function setPill(nid,key,val,el){
+  nd(nid,key,val);
+  el.closest('.w-pills').querySelectorAll('.w-pill').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+}
+function rndSeed(nid,key){
+  const v=Math.floor(Math.random()*1e9);
+  nd(nid,key,v);
+  const sl=document.querySelector(`#wr-${nid}-${key} input[type="range"]`);
+  if(sl){sl.value=Math.min(v,parseInt(sl.max));sl.nextElementSibling.textContent=v;}
+}
+function syncApiKey(){
+  Object.values(nodes).forEach(n=>{
+    if(n.def==='api_key'&&n.data.apiKey){
+      API_KEY=n.data.apiKey;
+      document.getElementById('api-inp').value=API_KEY;
+      onApiChange();
+    }
+  });
+}
+function onApiChange(){
+  API_KEY=document.getElementById('api-inp').value.trim();
+  const ok=API_KEY.length>10;
+  const d=document.getElementById('api-dot');
+  d.textContent=ok?'● 입력됨':'● 미입력';
+  d.className=ok?'ok':'';
+}
+function onImgLoad(nid,wid,e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const m=ev.target.result.match(/^data:([^;]+);base64,(.+)$/);
+    if(!m)return;
+    nodes[nid].data[wid+'_mime']=m[1];
+    nodes[nid].data[wid+'_b64']=m[2];
+    rebuildNode(nid);
+  };
+  r.readAsDataURL(f);
+}
+function clearImg(nid,wid){
+  nodes[nid].data[wid+'_b64']=null;
+  nodes[nid].data[wid+'_mime']=null;
+  rebuildNode(nid);
+}
+function rebuildNode(id){
+  if(!nodes[id])return;
+  renderNode(id);
+  setTimeout(()=>{
+    refreshSocks();redrawAllWires();
+    if(nodes[id]?.def==='mask_edit') initMaskCanvas(id);
+  },50);
+}
+function toggleCollapse(id,e){
+  e&&e.stopPropagation();
+  nodes[id].collapsed=!nodes[id].collapsed;
+  renderNode(id);
+}
+
+// ═══════════════════════════════════════════════════════════
+// SOCKETS
+// ═══════════════════════════════════════════════════════════
+function refreshSocks(){
+  document.querySelectorAll('.sock').forEach(s=>{
+    const nid=s.dataset.nid,slot=s.dataset.slot,dir=s.dataset.dir;
+    const con=dir==='output'
+      ? wires.some(w=>w.fn===nid&&w.fs===slot)
+      : wires.some(w=>w.tn===nid&&w.ts===slot);
+    s.classList.toggle('conn',con);
+  });
+}
+
+function onSockDown(e,nid,slot,type,dir){
+  e.stopPropagation();
+  e.preventDefault();
+  if(e.button!==0&&e.pointerType!=='touch')return;
+  // Use client coords directly from event (more reliable than getBoundingClientRect)
+  const el=document.getElementById('nd-'+nid);
+  if(!el)return;
+  const sock=el.querySelector(`.sock[data-slot="${slot}"][data-dir="${dir}"]`);
+  if(!sock)return;
+  const sr=sock.getBoundingClientRect();
+  const sx=sr.left+sr.width/2, sy=sr.top+sr.height/2;
+  wireDrag={nid,slot,type,dir,sx,sy};
+  const wdp=document.getElementById('wdp');
+  wdp.setAttribute('stroke',TCRAW[type]||'#888');
+}
+
+// Socket mouseup — registered on document level (see below)
+function tryFinishWire(e){
+  if(!wireDrag)return;
+  const from=wireDrag;
+  wireDrag=null;
+  document.getElementById('wdp').setAttribute('d','');
+
+  // Find which socket is under cursor
+  const els=document.elementsFromPoint(e.clientX,e.clientY);
+  const target=els.find(el=>el.classList&&el.classList.contains('sock'));
+  if(!target)return;
+
+  const tnid=target.dataset.nid,tslot=target.dataset.slot,ttype=target.dataset.t,tdir=target.dataset.dir;
+  if(from.nid===tnid&&from.slot===tslot)return;
+  if(from.type!==ttype){setMsg(`⚠ 타입 불일치: ${from.type} ≠ ${ttype}`,2500);return;}
+
+  let fn,fs,tn,ts;
+  if(from.dir==='output'&&tdir==='input'){fn=from.nid;fs=from.slot;tn=tnid;ts=tslot;}
+  else if(from.dir==='input'&&tdir==='output'){fn=tnid;fs=tslot;tn=from.nid;ts=from.slot;}
+  else{setMsg('output → input 방향으로 연결하세요',2000);return;}
+
+  addWire(fn,fs,tn,ts,from.type);
+  setMsg(`✓ ${from.type} 연결됨`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// WIRES
+// ═══════════════════════════════════════════════════════════
+function addWire(fn,fs,tn,ts,type){
+  wires=wires.filter(w=>!(w.tn===tn&&w.ts===ts));
+  wires.push({id:'w'+(++wSeq),fn,fs,tn,ts,type});
+  refreshSocks();
+  redrawAllWires();
+  // generator에 model 연결 시 ckptlabel 갱신
+  if(nodes[tn]?.def==='generator') updateCkptLabel(tn);
+}
+function removeWire(wid){
+  wires=wires.filter(w=>w.id!==wid);
+  refreshSocks();
+  redrawAllWires();
+}
+
+function redrawAllWires(){
+  const g=document.getElementById('wires-g');
+  g.innerHTML='';
+
+  wires.forEach(w=>{
+    const fp=sockCanvasPos(w.fn,w.fs,'output');
+    const tp=sockCanvasPos(w.tn,w.ts,'input');
+    if(!fp||!tp)return;
+    const x1=fp.x,y1=fp.y,x2=tp.x,y2=tp.y;
+    const cp=Math.max(Math.abs(x2-x1)*0.4,60);
+    const col=TCRAW[w.type]||'#555';
+
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${x1},${y1} C${x1+cp},${y1} ${x2-cp},${y2} ${x2},${y2}`);
+    path.setAttribute('stroke',col);
+    path.setAttribute('stroke-width','1.8');
+    path.setAttribute('fill','none');
+    path.setAttribute('opacity','0.85');
+    path.style.cursor='pointer';
+    path.setAttribute('pointer-events','stroke');
+    path.addEventListener('dblclick',()=>removeWire(w.id));
+    path.addEventListener('contextmenu',ev=>{ev.preventDefault();removeWire(w.id);});
+    g.appendChild(path);
+
+    // dots
+    [[x1,y1],[x2,y2]].forEach(([cx,cy])=>{
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',cx);c.setAttribute('cy',cy);
+      c.setAttribute('r','3.5');c.setAttribute('fill',col);c.setAttribute('opacity','0.9');
+      g.appendChild(c);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS EVENTS (on document, handles everything)
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('mousedown',e=>{
+  // Only handle canvas area
+  const canvas=document.getElementById('canvas');
+  if(!canvas.contains(e.target)&&!e.target.closest('#canvas-area'))return;
+  if(e.button===1||(e.button===0&&e.altKey)){
+    isPan=true;
+    panS={x:e.clientX-PX,y:e.clientY-PY};
+    document.getElementById('canvas').style.cursor='grabbing';
+    e.preventDefault();return;
+  }
+  if(e.button===0){
+    if(e.target.id==='canvas'||e.target.id==='tlayer'||e.target.closest('#svg-wires')){
+      deselectAll();
+    }
+  }
+});
+document.addEventListener('pointermove',e=>{
+  if(isPan){
+    PX=e.clientX-panS.x;PY=e.clientY-panS.y;
+    applyTx();return;
+  }
+  if(dragNid){
+    const p=s2c(e.clientX,e.clientY);
+    nodes[dragNid].x=p.x-dragOff.x;
+    nodes[dragNid].y=p.y-dragOff.y;
+    const el=document.getElementById('nd-'+dragNid);
+    if(el){el.style.left=nodes[dragNid].x+'px';el.style.top=nodes[dragNid].y+'px';}
+    redrawAllWires();return;
+  }
+  if(wireDrag){
+    const x1=wireDrag.sx,y1=wireDrag.sy,x2=e.clientX,y2=e.clientY;
+    const cp=Math.max(Math.abs(x2-x1)*0.4,40);
+    document.getElementById('wdp').setAttribute('d',
+      `M${x1},${y1} C${x1+cp},${y1} ${x2-cp},${y2} ${x2},${y2}`);
+  }
+});
+document.addEventListener('pointerup',e=>{
+  if(isPan){isPan=false;document.getElementById('canvas').style.cursor='default';}
+  if(dragNid){dragNid=null;redrawAllWires();}
+  if(wireDrag) tryFinishWire(e);
+});
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if(e.key==='Escape'){hideCtx();wireDrag=null;document.getElementById('wdp').setAttribute('d','');}
+  if(e.key==='Delete'||e.key==='Backspace'){sel.forEach(id=>removeNode(id));sel.clear();}
+  if(e.key==='f'||e.key==='F')fitView();
+  if(e.ctrlKey&&e.key==='Enter')runAll();
+});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.ctx'))hideCtx();
+});
+
+document.getElementById('canvas').addEventListener('wheel',e=>{
+  e.preventDefault();
+  const d=e.deltaY<0?1.1:0.91;
+  const nz=Math.min(3,Math.max(0.15,ZM*d));
+  const r=canvasRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  PX=mx-(mx-PX)*(nz/ZM);PY=my-(my-PY)*(nz/ZM);ZM=nz;
+  applyTx();
+},{passive:false});
+
+function onCanvasCtx(e){
+  if(e.target.closest('.node'))return;
+  e.preventDefault();
+  ctxP=s2c(e.clientX,e.clientY);
+  showCtx('ctx-canvas',e.clientX,e.clientY);
+}
+function onCanvasDbl(e){
+  if(e.target.id==='canvas'||e.target.id==='tlayer')runAll();
+}
+
+// ─── Node drag ───────────────────────────────────────────
+function startDrag(id,e){
+  if(e.button!==0)return;
+  e.stopPropagation();
+  selectNode(id,e.shiftKey);
+  dragNid=id;
+  const p=s2c(e.clientX,e.clientY);
+  dragOff={x:p.x-nodes[id].x,y:p.y-nodes[id].y};
+}
+
+// ─── Selection ───────────────────────────────────────────
+function selectNode(id,multi=false){
+  if(!multi)deselectAll();
+  sel.add(id);
+  document.getElementById('nd-'+id)?.classList.add('sel');
+}
+function deselectAll(){
+  sel.forEach(id=>document.getElementById('nd-'+id)?.classList.remove('sel'));
+  sel.clear();
+}
+
+// ─── Context menus ───────────────────────────────────────
+function showCtx(id,x,y){
+  hideCtx();
+  const el=document.getElementById(id);
+  el.style.display='block';
+  el.style.left=x+'px';
+  el.style.top=y+'px';
+  // Prevent overflow
+  setTimeout(()=>{
+    const r=el.getBoundingClientRect();
+    if(r.right>window.innerWidth)el.style.left=(x-r.width)+'px';
+    if(r.bottom>window.innerHeight)el.style.top=(y-r.height)+'px';
+  },0);
+}
+function hideCtx(){
+  document.querySelectorAll('.ctx').forEach(c=>c.style.display='none');
+}
+function ctxAdd(defKey){
+  hideCtx();
+  const id=mkNode(defKey,ctxP.x-110,ctxP.y-30);
+  if(id)setMsg(`+ ${DEFS[defKey].label}`);
+}
+function addNodeAt(defKey){
+  // From sidebar click — place in center
+  const r=canvasRect();
+  ctxP=s2c(r.left+r.width/2,r.top+r.height/2);
+  ctxP.x+=Math.random()*80-40;
+  ctxP.y+=Math.random()*80-40;
+  ctxAdd(defKey);
+}
+function openNodeCtx(id,e){
+  e.preventDefault();e.stopPropagation();
+  ctxNid=id;
+  document.getElementById('ctx-node-title').textContent=DEFS[nodes[id]?.def]?.label||'NODE';
+  showCtx('ctx-node',e.clientX,e.clientY);
+}
+function nodeCtxDo(action){
+  hideCtx();
+  const id=ctxNid;if(!id||!nodes[id])return;
+  switch(action){
+    case 'remove':removeNode(id);break;
+    case 'bypass':nodes[id].bypassed=!nodes[id].bypassed;renderNode(id);break;
+    case 'collapse':toggleCollapse(id);break;
+    case 'clone':{
+      const nid=mkNode(nodes[id].def,nodes[id].x+30,nodes[id].y+30);
+      if(nid){nodes[nid].data=JSON.parse(JSON.stringify(nodes[id].data));renderNode(nid);}
+      break;}
+    case 'c-yellow':nodes[id].color='#a08020';renderNode(id);break;
+    case 'c-red':nodes[id].color='#902020';renderNode(id);break;
+    case 'c-teal':nodes[id].color='#205555';renderNode(id);break;
+    case 'c-reset':nodes[id].color=null;renderNode(id);break;
+  }
+}
+function removeNode(id,e){
+  if(e){e.stopPropagation();}
+  wires=wires.filter(w=>w.fn!==id&&w.tn!==id);
+  document.getElementById('nd-'+id)?.remove();
+  delete nodes[id];sel.delete(id);
+  redrawAllWires();
+}
+
+// ─── Fit view ────────────────────────────────────────────
+function fitView(){
+  const ids=Object.keys(nodes);
+  if(!ids.length){PX=0;PY=0;ZM=1;applyTx();return;}
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  ids.forEach(id=>{
+    const n=nodes[id],el=document.getElementById('nd-'+id);
+    const w=el?el.offsetWidth:240,h=el?el.offsetHeight:200;
+    x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);
+    x1=Math.max(x1,n.x+w);y1=Math.max(y1,n.y+h);
+  });
+  const cv=document.getElementById('canvas-area');
+  const pad=70;
+  ZM=Math.min(2,Math.max(0.12,Math.min(cv.clientWidth/(x1-x0+pad*2),cv.clientHeight/(y1-y0+pad*2))));
+  PX=(cv.clientWidth-(x1-x0)*ZM)/2-x0*ZM;
+  PY=(cv.clientHeight-(y1-y0)*ZM)/2-y0*ZM;
+  applyTx();
+}
+
+// ─── Clear canvas ────────────────────────────────────────
+function clearCanvas(){
+  if(Object.keys(nodes).length&&!confirm('모든 노드를 삭제할까요?'))return;
+  document.querySelectorAll('.node').forEach(el=>el.remove());
+  nodes={};wires=[];nSeq=0;wSeq=0;
+  document.getElementById('wires-g').innerHTML='';
+  setMsg('Cleared');
+}
+
+// ═══════════════════════════════════════════════════════════
+// WIRE RESOLVE — finds upstream connected node for a slot
+// ═══════════════════════════════════════════════════════════
+function upstream(tnid,tslot){
+  const w=wires.find(w=>w.tn===tnid&&w.ts===tslot);
+  return w?nodes[w.fn]:null;
+}
+const MODEL_MAP={
+  nano:'gemini-2.5-flash-image',
+  nano2:'gemini-3.1-flash-image-preview',
+  nanoPro:'gemini-3-pro-image-preview'
+};
+function getApiKey(nid){
+  const n=upstream(nid,'api_key');
+  return (n&&n.data.apiKey)||API_KEY;
+}
+function getModel(nid){
+  // KSampler 내부 sampler 위젯에서 읽기
+  const n=nodes[nid];
+  if(n?.data?.sampler && MODEL_MAP[n.data.sampler]) return MODEL_MAP[n.data.sampler];
+  // fallback: upstream model 노드
+  const mn=upstream(nid,'model');
+  return (mn&&mn.data.model)||MODEL_MAP.nano2;
+}
+function getPositive(nid){
+  const n=upstream(nid,'positive');
+  if(!n) return '';
+  const text=(n.data.text||'').trim();
+  const style=n.data.style||'';
+  if(!text) return '';
+  // style을 영어 프롬프트에 자연스럽게 포함
+  if(style && style!=='photo') return `${text}, ${style} style`;
+  return text;
+}
+function getNegative(nid){return upstream(nid,'negative')?.data?.text||'';}
+function getCamera(nid){
+  if(typeof CAM_RIG!=='undefined'){
+    const p=CAM_RIG.pitch||0, y=CAM_RIG.yaw||0;
+    const angle=(p>60)?'버즈아이':(p>20)?'하이앵글':(p>5)?'약하이':(p>-5)?'아이레벨':(p>-25)?'약로우':(p>-60)?'로우앵글':'웜즈아이';
+    const shot=(p>60)?'EWS':(p>30)?'WS':(p>10)?'LS':(p>-10)?'MS':(p>-30)?'MCU':'CU';
+    return {shot,lens:35,aperture:4.5,comp:'룰오브서드',angle,yaw:y,pitch:p,roll:CAM_RIG.roll||0,dist:CAM_RIG.dist||7};
+  }
+  return upstream(nid,'camera')?.data||null;
+}
+function getLighting(nid){
+  if(typeof LIGHTS!=='undefined'&&LIGHTS.length){
+    return LIGHTS.map((l,i)=>{
+      const dirs=['top','front','right','left','back','bottom'];
+      const typeMap={point:'point light',spot:'spotlight',area:'area light'};
+      const tStr=typeMap[l.type]||l.type||'point light';
+      return `Light${i+1}: ${tStr}, H=${l.rotH}°, V=${l.rotV}°, dist=${l.dist||5}, color=${l.colorHex||'#fff'}, bright=${l.bright||5}`;
+    }).join('; ');
+  }
+  return null;
+}
+function getRef(nid){
+  const n=upstream(nid,'reference');
+  if(!n||!n.data.img_b64)return null;
+  return {b64:n.data.img_b64,mime:n.data.img_mime||'image/jpeg',role:n.data.role||'style'};
+}
+function getSeed(nid){
+  // KSampler 내부 seed 위젯에서 읽기
+  const v=parseInt(nodes[nid]?.data?.seed??-1);
+  return Number.isFinite(v)?v:-1;
+}
+function getRatio(nid){
+  // KSampler 내부 ratio 위젯에서 읽기
+  const r=nodes[nid]?.data?.ratio;
+  if(r) return r;
+  // fallback: empty_latent 크기 계산
+  const latNode=upstream(nid,'latent_image');
+  if(latNode?.data){
+    const w=parseInt(latNode.data.width||1024), h=parseInt(latNode.data.height||1024);
+    if(w&&h){
+      const gcd=(a,b)=>b?gcd(b,a%b):a;
+      const g=gcd(w,h);
+      return `${w/g}:${h/g}`;
+    }
+  }
+  return '1:1';
+}
+function getUpstreamImage(nid,slot){
+  const n=upstream(nid,slot);
+  if(!n)return null;
+  if(n._outImg)return {b64:n._outImg,mime:n._outMime||'image/jpeg'};
+  if(n.data?.img_b64)return {b64:n.data.img_b64,mime:n.data.img_mime||'image/jpeg'};
+  if(n.data?.baseImg_b64)return {b64:n.data.baseImg_b64,mime:n.data.baseImg_mime||'image/jpeg'};
+  return null;
+}
+
+// ─── Build prompt text ───────────────────────────────────
+function buildPrompt(pos,neg,cam,lighting){
+  const SHOTS={
+    ECU:'extreme close-up (eyes/lips only)',CU:'close-up (full face)',
+    MCU:'medium close-up (chest up)',MS:'medium shot (waist up)',
+    MLS:'medium long shot (knees up)',LS:'long shot (full body)',
+    WS:'wide shot (subject+environment)',EWS:'extreme wide shot (vast scene)'
+  };
+  const ANGLES={
+    '버즈아이':"bird's-eye view",'하이앵글':'high angle shot','약하이':'slightly high angle',
+    '아이레벨':'eye level','약로우':'slightly low angle','로우앵글':'low angle shot','웜즈아이':"worm's-eye"
+  };
+  // 명시적 이미지 생성 요청 — "STOP" 방지 핵심
+  let p='Generate an image: '+(pos||'');
+  if(neg) p+='\nNEGATIVE PROMPT (avoid these): '+neg;
+  if(cam){
+    p+='\n\nCAMERA:';
+    p+=' Shot='+( SHOTS[cam.shot]||cam.shot);
+    p+=', Lens='+cam.lens+'mm f/'+parseFloat(cam.aperture||4.5).toFixed(1);
+    p+=', Angle='+(ANGLES[cam.angle]||cam.angle);
+    p+=', Comp='+(cam.comp||'rule of thirds');
+  }
+  return p;
+}
+
+// ═══════════════════════════════════════════════════════════
+// GEMINI API CALL
+// ═══════════════════════════════════════════════════════════
+async function callGemini({apiKey,model,prompt,ratio,seed,imgB64,imgMime,refB64,refMime,refRole,maskDU}){
+  const parts=[];
+  if(imgB64) parts.push({inline_data:{mime_type:imgMime||'image/jpeg',data:imgB64}});
+  if(maskDU){
+    const mm=maskDU.match(/^data:([^;]+);base64,(.+)$/);
+    if(mm){
+      parts.push({text:'[MASK] White=edit area, Black=preserve unchanged'});
+      parts.push({inline_data:{mime_type:'image/png',data:mm[2]}});
+    }
+  }
+  if(refB64){
+    const RL={style:'STYLE_REFERENCE',subject:'SUBJECT_REFERENCE',object:'OBJECT_REFERENCE',motion:'MOTION_REFERENCE'};
+    parts.push({text:`[${RL[refRole]||'STYLE_REFERENCE'}]`});
+    parts.push({inline_data:{mime_type:refMime||'image/jpeg',data:refB64}});
+  }
+  parts.push({text:prompt});
+
+  const gc={responseModalities:['TEXT','IMAGE'],temperature:1.0};
+  if(Number.isFinite(seed)&&seed>=0) gc.seed=seed;
+  if(ratio&&!imgB64){
+    // Gemini imageConfig aspectRatio — 지원되는 비율만
+    const VALID_RATIOS=['1:1','3:4','4:3','9:16','16:9'];
+    if(VALID_RATIOS.includes(ratio)) gc.imageConfig={aspectRatio:ratio};
+    else gc.imageConfig={aspectRatio:'1:1'};
+  }
+
+  const body={contents:[{parts,role:'user'}],generationConfig:gc};
+  console.log('[IMAGESAIRO] API call →', model, '\nPrompt:', prompt.slice(0,200), '\ngc:', JSON.stringify(gc));
+
+  const res=await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {method:'POST',
+     headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},
+     body:JSON.stringify(body)}
+  );
+  const j=await res.json();
+  console.log('[IMAGESAIRO] Response:', JSON.stringify(j).slice(0,500));
+  if(!res.ok) throw new Error(j.error?.message||`HTTP ${res.status}`);
+
+  for(const c of(j.candidates||[]))
+    for(const p of(c?.content?.parts||[]))
+      if((p.inlineData?.data || p.inline_data?.data) &&
+         (p.inlineData?.mimeType||p.inlineData?.mime_type||p.inline_data?.mimeType||p.inline_data?.mime_type||'').startsWith('image/')){
+        const data=p.inlineData?.data||p.inline_data?.data;
+        const mime=p.inlineData?.mimeType||p.inlineData?.mime_type||p.inline_data?.mimeType||p.inline_data?.mime_type;
+        return {b64:data, mime};
+      }
+
+  const fr=j.candidates?.[0]?.finishReason;
+  if(fr==='SAFETY'||fr==='IMAGE_SAFETY') throw new Error('안전 정책 차단 — 프롬프트를 더 구체적으로 수정하세요');
+  const allParts=j.candidates?.[0]?.content?.parts||[];
+  const textPart=allParts.find(p=>p.text);
+  if(textPart){
+    const txt=textPart.text||'';
+    console.warn('[IMAGESAIRO] Text-only response:', txt);
+    throw new Error('텍스트만 반환: "'+txt.slice(0,200)+'"');
+  }
+  throw new Error('이미지 없음 (finishReason='+( fr||'unknown')+') — 브라우저 콘솔(F12)에서 상세 확인');
+}
+
+// ═══════════════════════════════════════════════════════════
+// GENERATE
+// ═══════════════════════════════════════════════════════════
+async function runGen(nid){
+  const n=nodes[nid];if(!n)return;
+
+  const ak=getApiKey(nid);
+  if(!ak||ak.length<10){setMsg('❌ API Key 없음 — Load API Key 노드를 연결하거나 상단에 입력',3000);return;}
+
+  const model=getModel(nid);
+  const pos=getPositive(nid);
+  if(!pos.trim()){setMsg('❌ CLIP Text Encode (positive) 를 연결하세요',2500);return;}
+
+  const neg=getNegative(nid);
+  const cam=getCamera(nid);
+  const lighting=getLighting(nid);
+  const ref=getRef(nid);
+  const seed=getSeed(nid);
+  const ratio=getRatio(nid);
+  const prompt=buildPrompt(pos,neg,cam,lighting);
+
+  setBtnBusy(nid,true);
+  addQueueItem(nid,'running','Generating...');
+  setMsg('⚡ Generating...');
+  n.data._ratio=ratio;
+
+  try{
+    const result=await callGemini({
+      apiKey:ak,model,prompt,ratio,seed,
+      refB64:ref?.b64,refMime:ref?.mime,refRole:ref?.role
+    });
+    n._outImg=result.b64;
+    n._outMime=result.mime;
+    propagate(nid,result.b64,result.mime);
+    setBtnBusy(nid,false);
+    setStat(nid,'✓ Done');
+    updateQueueItem(nid,'done','Done');
+    document.getElementById('nd-'+nid)?.classList.add('done');
+    setMsg('✓ Image generated');
+  }catch(err){
+    setBtnBusy(nid,false,'fail');
+    setStat(nid,'❌ '+err.message);
+    updateQueueItem(nid,'done','Error: '+err.message.slice(0,40));
+    document.getElementById('nd-'+nid)?.classList.add('errored');
+    setMsg('❌ '+err.message,6000);
+  }
+}
+
+async function runMask(nid){
+  const n=nodes[nid];if(!n)return;
+  const ak=getApiKey(nid);
+  if(!ak||ak.length<10){setMsg('❌ API Key 없음',3000);return;}
+  const model=getModel(nid);
+  const pos=getPositive(nid);
+  if(!pos.trim()){setMsg('❌ CONDITIONING (positive) 연결 필요',2500);return;}
+
+  let baseImg=getUpstreamImage(nid,'image');
+  if(!baseImg&&n.data.baseImg_b64) baseImg={b64:n.data.baseImg_b64,mime:n.data.baseImg_mime||'image/jpeg'};
+  if(!baseImg){setMsg('❌ Base image 없음',2000);return;}
+
+  const maskDU=getMaskDU(nid);
+  setBtnBusy(nid,true);
+  setStat(nid,'Inpainting...');
+  setMsg('🎭 Inpainting...');
+
+  const ipPrompt=`Edit this image using the inpaint mask. Inpaint strength: ${n.data.strength||7}/10.\nInstruction: ${pos}\nMask interpretation: white area = edit zone, black area = preserve exactly.`;
+
+  try{
+    const result=await callGemini({
+      apiKey:ak,model,prompt:ipPrompt,
+      imgB64:baseImg.b64,imgMime:baseImg.mime,maskDU
+    });
+    n._outImg=result.b64;n._outMime=result.mime;
+    propagate(nid,result.b64,result.mime);
+    setBtnBusy(nid,false);
+    setStat(nid,'✓ Inpaint done');
+    setMsg('✓ Inpaint complete');
+  }catch(err){
+    setBtnBusy(nid,false,'fail');
+    setStat(nid,'❌ '+err.message);
+    setMsg('❌ '+err.message,5000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXECUTION HIGHLIGHT — ComfyUI 스타일 노드 순서 하이라이트
+// ═══════════════════════════════════════════════════════════
+
+// ComfyUI 실제 실행 순서: Checkpoint→CLIP+→CLIP-→EmptyLatent→KSampler→VAEDecode→Preview
+const EXEC_ORDER_MAP={
+  api_key:0,
+  model_select:1,
+  clip_text:2,
+  neg_prompt:2,
+  prompt:2,
+  camera:2,
+  generator:3,
+  vae_decode:4,
+  output:5
+};
+
+function getExecSequence(){
+  return Object.keys(nodes)
+    .filter(id=>!nodes[id].bypassed)
+    .sort((a,b)=>{
+      const oa=EXEC_ORDER_MAP[nodes[a].def]??99;
+      const ob=EXEC_ORDER_MAP[nodes[b].def]??99;
+      if(oa!==ob) return oa-ob;
+      return (nodes[a].y||0)-(nodes[b].y||0); // 같은 타입이면 y좌표(위→아래) 순
+    });
+}
+
+function setNodeExecuting(id){
+  const el=document.getElementById('nd-'+id);
+  if(!el) return;
+  el.classList.remove('exec-done');
+  el.classList.add('executing');
+}
+
+function setNodeExecDoneOnly(id){
+  // exec-done 없이 그냥 executing만 제거 (중간 노드용)
+  const el=document.getElementById('nd-'+id);
+  if(!el) return;
+  el.classList.remove('executing');
+}
+
+function setNodeExecDoneGreen(id){
+  // 마지막 노드(output)에만 녹색 표시
+  const el=document.getElementById('nd-'+id);
+  if(!el) return;
+  el.classList.remove('executing');
+  el.classList.add('exec-done');
+  setTimeout(()=>{
+    const e2=document.getElementById('nd-'+id);
+    if(e2) e2.classList.remove('exec-done');
+  },2500);
+}
+
+function clearAllExec(){
+  Object.keys(nodes).forEach(id=>{
+    const el=document.getElementById('nd-'+id);
+    if(el) el.classList.remove('executing','exec-done');
+  });
+}
+
+async function runAll(){
+  const gens=Object.keys(nodes).filter(id=>nodes[id].def==='generator'&&!nodes[id].bypassed);
+  if(!gens.length){setMsg('Gemini Sampler 노드 없음',2000);return;}
+
+  clearAllExec();
+  const seq=getExecSequence();
+  const genIdx=seq.findIndex(id=>nodes[id].def==='generator');
+  const beforeGen=seq.slice(0, genIdx<0 ? seq.length : genIdx);
+  const afterGen=genIdx<0 ? [] : seq.slice(genIdx+1);
+  // output 노드들 (마지막 — 녹색 표시 대상)
+  const outputIds=new Set(Object.keys(nodes).filter(id=>nodes[id].def==='output'));
+
+  // 1) Checkpoint→CLIP+→CLIP-→EmptyLatent: 순차 노란 하이라이트
+  for(const id of beforeGen){
+    setNodeExecuting(id);
+    await new Promise(r=>setTimeout(r,220));
+    setNodeExecDoneOnly(id);
+  }
+
+  // 2) KSampler: 노란 하이라이트 켜고 → 실제 API 끝날때까지 유지
+  for(const genId of gens){
+    setNodeExecuting(genId);
+    await runGen(genId);
+    setNodeExecDoneOnly(genId);
+
+    // 3) VAEDecode → Preview: 순차 노란 하이라이트, Preview는 녹색으로 마무리
+    for(const id of afterGen){
+      setNodeExecuting(id);
+      await new Promise(r=>setTimeout(r,180));
+      if(outputIds.has(id)){
+        setNodeExecDoneGreen(id); // Preview만 녹색
+      } else {
+        setNodeExecDoneOnly(id);  // VAE Decode는 그냥 사라짐
+      }
+    }
+  }
+}
+
+// ── Helper: 모든 downstream output 노드에 이미지 전달
+// type을 무시하고 IMAGE/LATENT 체인 모두 탐색
+function propagate(fromNid,b64,mime){
+  const fromNode=nodes[fromNid];
+  if(fromNode){fromNode._outImg=b64;fromNode._outMime=mime;}
+
+  const outWires=wires.filter(w=>w.fn===fromNid);
+  console.log('[PROP] from='+fromNid+'('+nodes[fromNid]?.def+')',' wires:',outWires.length, outWires.map(w=>w.tn+'('+nodes[w.tn]?.def+') type='+w.type));
+
+  outWires.forEach(w=>{
+    const tn=nodes[w.tn];
+    if(!tn) return;
+
+    if(tn.def==='vae_decode'){
+      tn._outImg=b64;tn._outMime=mime;
+      propagate(w.tn,b64,mime);
+    } else if(tn.def==='output'){
+      tn._outImg=b64;tn._outMime=mime;
+      const areaId='outarea-'+w.tn;
+      const area=document.getElementById(areaId);
+      console.log('[PROP] output node='+w.tn+' area el:',area,'  areaId:',areaId);
+      if(area){
+        area.innerHTML=`<img src="data:${mime};base64,${b64}" id="oimg-${w.tn}" style="width:100%;height:100%;object-fit:contain;display:block;">`;
+        area.className='w-outimg';
+      } else {
+        // DOM에 없으면 node 자체를 리렌더링 후 다시 시도
+        renderNode(w.tn);
+        setTimeout(()=>{
+          const a2=document.getElementById(areaId);
+          if(a2) a2.innerHTML=`<img src="data:${mime};base64,${b64}" id="oimg-${w.tn}" style="width:100%;height:100%;object-fit:contain;display:block;">`;
+        },50);
+      }
+      document.getElementById('nd-'+w.tn)?.classList.remove('errored');
+    } else if(tn.def==='mask_edit'){
+      tn._baseFromWire=`data:${mime};base64,${b64}`;
+      rebuildNode(w.tn);
+    }
+  });
+}
+
+// 디버그용: 콘솔에서 debugNodes() 실행
+window.debugNodes=function(){
+  console.table(Object.values(nodes).map(n=>({id:n.id,def:n.def,x:Math.round(n.x),y:Math.round(n.y)})));
+  console.log('wires:',wires);
+  console.log('outarea DOM check:');
+  Object.values(nodes).filter(n=>n.def==='output').forEach(n=>{
+    console.log('  outarea-'+n.id+':',document.getElementById('outarea-'+n.id));
+  });
+};
+
+function propagateImage(fromNid,b64,mime){
+  // 하위 호환용 — propagate로 통합
+  propagate(fromNid,b64,mime);
+}
+
+function setBtnBusy(nid,busy,state){
+  const btn=document.getElementById('gbtn-'+nid);if(!btn)return;
+  const isMask=nodes[nid]?.def==='mask_edit';
+  if(busy){
+    btn.className='w-run busy';
+    btn.innerHTML='<div class="spin"></div> Processing...';
+  }else if(state==='fail'){
+    btn.className='w-run fail';
+    btn.innerHTML='⚠ Error — Retry';
+    setTimeout(()=>{
+      const b2=document.getElementById('gbtn-'+nid);
+      if(b2){b2.className='w-run idle';b2.textContent=isMask?'Apply Inpaint':'Queue Prompt';}
+    },3000);
+  }else{
+    btn.className='w-run idle';
+    btn.textContent=isMask?'Apply Inpaint':'Queue Prompt';
+  }
+}
+function setStat(nid,msg){
+  const el=document.getElementById('gst-'+nid);
+  if(!el)return;
+  el.textContent=msg;
+  el.style.color=msg.startsWith('❌')?'var(--red)':msg.startsWith('✓')?'var(--green)':'var(--tx3)';
+  if(msg.startsWith('✓'))setTimeout(()=>{const e2=document.getElementById('gst-'+nid);if(e2){e2.textContent='';e2.style.color='var(--tx3)';}},4000);
+}
+
+// ── Output actions ────────────────────────────────────────
+function dlOut(nid){
+  const d=nodes[nid]?._outImg;if(!d){setMsg('이미지 없음',1500);return;}
+  const m=nodes[nid]._outMime||'image/jpeg';
+  const a=document.createElement('a');
+  a.href=`data:${m};base64,${d}`;
+  a.download=`imagesairo_${Date.now()}.${m.split('/')[1]||'jpg'}`;a.click();
+}
+function cpOut(nid){
+  const img=document.getElementById('oimg-'+nid);if(!img){setMsg('이미지 없음',1500);return;}
+  const cv=document.createElement('canvas');
+  cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+  cv.getContext('2d').drawImage(img,0,0);
+  cv.toBlob(b=>{
+    navigator.clipboard.write([new ClipboardItem({'image/png':b})])
+      .then(()=>setMsg('✓ 클립보드 복사'))
+      .catch(()=>setMsg('클립보드 실패',2000));
+  });
+}
+function toMask(nid){
+  const d=nodes[nid]?._outImg;if(!d){setMsg('이미지 없음',1500);return;}
+  let mid=Object.keys(nodes).find(id=>nodes[id].def==='mask_edit');
+  if(!mid){mid=mkNode('mask_edit',nodes[nid].x+320,nodes[nid].y);}
+  nodes[mid]._baseFromWire=`data:${nodes[nid]._outMime||'image/jpeg'};base64,${d}`;
+  rebuildNode(mid);
+  setMsg('→ Inpaint Editor 로 전송됨');
+}
+
+// ═══════════════════════════════════════════════════════════
+// MASK CANVAS
+// ═══════════════════════════════════════════════════════════
+const MST={};
+function initMaskCanvas(nid){
+  const cv=document.getElementById('mc-'+nid);if(!cv)return;
+  const wrap=document.getElementById('mwrap-'+nid);if(!wrap)return;
+  cv.width=wrap.offsetWidth||280;cv.height=wrap.offsetHeight||157;
+  if(!MST[nid])MST[nid]={drawing:false,tool:'draw',lx:0,ly:0};
+  cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+
+  cv.addEventListener('mousedown',e=>{
+    MST[nid].drawing=true;
+    const r=cv.getBoundingClientRect();
+    MST[nid].lx=(e.clientX-r.left)*(cv.width/r.width);
+    MST[nid].ly=(e.clientY-r.top)*(cv.height/r.height);
+    e.stopPropagation();
+  });
+  cv.addEventListener('mousemove',e=>{
+    if(!MST[nid]?.drawing)return;
+    const r=cv.getBoundingClientRect();
+    const x=(e.clientX-r.left)*(cv.width/r.width);
+    const y=(e.clientY-r.top)*(cv.height/r.height);
+    const bs=nodes[nid]?.data?.brushSize||30;
+    const tool=MST[nid]?.tool||'draw';
+    const ctx=cv.getContext('2d');
+    ctx.lineWidth=bs;ctx.lineCap='round';ctx.lineJoin='round';
+    ctx.globalCompositeOperation=tool==='erase'?'destination-out':'source-over';
+    ctx.strokeStyle=tool==='erase'?'rgba(0,0,0,1)':'rgba(255,60,60,.7)';
+    ctx.beginPath();ctx.moveTo(MST[nid].lx,MST[nid].ly);ctx.lineTo(x,y);ctx.stroke();
+    MST[nid].lx=x;MST[nid].ly=y;
+    e.stopPropagation();
+  });
+  cv.addEventListener('mouseup',e=>{if(MST[nid])MST[nid].drawing=false;e.stopPropagation();});
+  cv.addEventListener('mouseleave',()=>{if(MST[nid])MST[nid].drawing=false;});
+}
+function setMT(nid,tool,el){
+  if(MST[nid])MST[nid].tool=tool;
+  el.closest('.w-mtools').querySelectorAll('.w-mtool').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+}
+function clearMask(nid){
+  const cv=document.getElementById('mc-'+nid);
+  if(cv)cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+}
+function getMaskDU(nid){
+  const cv=document.getElementById('mc-'+nid);if(!cv)return null;
+  const tmp=document.createElement('canvas');
+  tmp.width=cv.width;tmp.height=cv.height;
+  const ctx=tmp.getContext('2d');
+  ctx.fillStyle='black';ctx.fillRect(0,0,tmp.width,tmp.height);
+  const sd=cv.getContext('2d').getImageData(0,0,cv.width,cv.height);
+  const od=ctx.getImageData(0,0,tmp.width,tmp.height);
+  for(let i=0;i<sd.data.length;i+=4)
+    if(sd.data[i+3]>10){od.data[i]=od.data[i+1]=od.data[i+2]=255;od.data[i+3]=255;}
+  ctx.putImageData(od,0,0);
+  return tmp.toDataURL('image/png');
+}
+
+// ═══════════════════════════════════════════════════════════
+// QUEUE PANEL
+// ═══════════════════════════════════════════════════════════
+const qItems={};
+function addQueueItem(nid,state,msg){
+  const id='q-'+nid+'-'+Date.now();
+  qItems[nid]=id;
+  const panel=document.getElementById('rp-queue');
+  const existing=panel.querySelector('[data-placeholder]');
+  if(existing)existing.remove();
+  const div=document.createElement('div');
+  div.className='queue-item';div.id=id;
+  const col=state==='running'?'running':state==='done'?'done':'wait';
+  div.innerHTML=`<div class="queue-dot ${col}" id="qdot-${id}"></div><span id="qmsg-${id}">${msg}</span>`;
+  panel.insertBefore(div,panel.firstChild);
+}
+function updateQueueItem(nid,state,msg){
+  const id=qItems[nid];if(!id)return;
+  const dot=document.getElementById('qdot-'+id);
+  const msgEl=document.getElementById('qmsg-'+id);
+  if(dot)dot.className='queue-dot '+(state==='running'?'running':state==='done'?'done':'wait');
+  if(msgEl)msgEl.textContent=msg;
+  // Move to history after 3s
+  setTimeout(()=>{
+    const el=document.getElementById(id);
+    if(el){
+      const hist=document.getElementById('rp-history');
+      hist.insertBefore(el.cloneNode(true),hist.firstChild);
+      el.remove();
+    }
+  },3000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RIGHT PANEL TABS
+// ═══════════════════════════════════════════════════════════
+function rpTab(name,el){
+  document.querySelectorAll('.rp-tab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('rp-queue').style.display=name==='queue'?'':'none';
+  document.getElementById('rp-history').style.display=name==='history'?'':'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+// SAVE / LOAD WORKFLOW
+// ═══════════════════════════════════════════════════════════
+function saveWF(){
+  const d={
+    nodes:Object.entries(nodes).map(([id,n])=>({
+      id,def:n.def,x:n.x,y:n.y,collapsed:n.collapsed,bypassed:n.bypassed,color:n.color,
+      data:{...n.data,img_b64:null,baseImg_b64:null,_imgData:null}
+    })),
+    wires,nSeq,wSeq
+  };
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));
+  a.download=`imagesairo_workflow_${Date.now()}.json`;a.click();
+  setMsg('✓ Workflow saved');
+}
+function onWFLoad(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      clearCanvas();
+      nSeq=d.nSeq||0;wSeq=d.wSeq||0;
+      (d.nodes||[]).forEach(nd=>{
+        nodes[nd.id]={id:nd.id,def:nd.def,x:nd.x,y:nd.y,
+          data:nd.data||{},collapsed:nd.collapsed||false,
+          bypassed:nd.bypassed||false,color:nd.color||null,
+          _outImg:null,_outMime:null};
+        renderNode(nd.id);
+      });
+      wires=d.wires||[];
+      setTimeout(()=>{refreshSocks();redrawAllWires();fitView();},120);
+      setMsg('✓ Workflow loaded');
+    }catch(err){setMsg('❌ Load error: '+err.message,3000);}
+  };
+  r.readAsText(f);e.target.value='';
+}
+
+// ═══════════════════════════════════════════════════════════
+// DEFAULT WORKFLOW — ComfyUI style left-to-right
+// ═══════════════════════════════════════════════════════════
+function doReset(){
+  if(Object.keys(nodes).length&&!confirm('현재 워크플로우를 초기화할까요?'))return;
+  clearCanvas();
+
+  // ── Col 1: API + Checkpoint (x=40)
+  const apiId  = mkNode('api_key',      40,  60);
+  const modId  = mkNode('model_select', 40, 240);
+
+  // ── Col 2: Conditioning (x=360)
+  const posId  = mkNode('prompt',       360,  40);
+  const negId  = mkNode('neg_prompt',   360, 330);
+  const camId  = mkNode('camera',       360, 530);
+  const litId  = mkNode('lighting',     360, 830);
+
+  // ── Col 3: KSampler (x=720) — ratio/width/height/seed 내장
+  const genId  = mkNode('generator',    720, 180);
+
+  // ── Col 4: VAE Decode (x=1080)
+  const vaeId  = mkNode('vae_decode',  1080, 340);
+
+  // ── Col 5: Output (x=1320)
+  const outId  = mkNode('output',      1320, 340);
+
+  setTimeout(()=>{
+    // API → Checkpoint
+    addWire(apiId, 'API_KEY',      modId, 'api_key',      'API');
+    // Checkpoint → CLIP × 2, MODEL, VAE
+    addWire(modId, 'CLIP',         posId, 'clip',         'CLIP');
+    addWire(modId, 'CLIP',         negId, 'clip',         'CLIP');
+    addWire(modId, 'MODEL',        genId, 'model',        'MODEL');
+    addWire(modId, 'VAE',          vaeId, 'vae',          'VAE');
+    // Conditioning → KSampler
+    addWire(posId, 'CONDITIONING', genId, 'positive',     'COND');
+    addWire(negId, 'CONDITIONING', genId, 'negative',     'COND');
+    addWire(camId, 'CAMERA',       genId, 'camera',       'CAMERA');
+    addWire(litId, 'LIGHTING',     genId, 'lighting',     'LIGHTING');
+    // KSampler → VAE → Preview
+    addWire(genId, 'LATENT',       vaeId, 'samples',      'LATENT');
+    addWire(vaeId, 'IMAGE',        outId, 'images',       'IMAGE');
+    fitView();
+    setMsg('Default workflow — Load API Key에 키 입력 후 ▶ Queue Prompt');
+  },200);
+}
+
+// ═══════════════════════════════════════════════════════════
+// STATUS & MINIMAP
+// ═══════════════════════════════════════════════════════════
+let sbTimer=null;
+function setMsg(m,t=0){
+  document.getElementById('sb-msg').textContent=m;
+  if(sbTimer)clearTimeout(sbTimer);
+  if(t)sbTimer=setTimeout(()=>document.getElementById('sb-msg').textContent='',t);
+}
+function redrawMM(){
+  const cv=document.getElementById('mmc');
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.fillStyle='#111';ctx.fillRect(0,0,cv.width,cv.height);
+  const ids=Object.keys(nodes);if(!ids.length)return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  ids.forEach(id=>{const n=nodes[id];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+260);y1=Math.max(y1,n.y+200);});
+  const sc=Math.min(cv.width/(x1-x0+80),cv.height/(y1-y0+80),.35);
+  ids.forEach(id=>{
+    const n=nodes[id],el=document.getElementById('nd-'+id);
+    const w=(el?.offsetWidth||240)*sc,h=(el?.offsetHeight||160)*sc;
+    const x=(n.x-x0+40)*sc,y=(n.y-y0+40)*sc;
+    const stripe=DEFS[n.def]?.stripe||'#333';
+    ctx.fillStyle=stripe+'55';ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle=stripe+'99';ctx.strokeRect(x,y,w,h);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('load',()=>{
+  applyTx();
+  doReset();
+  // 3D rig: doReset이 setTimeout 200ms 후 wire 연결하므로, 그 후 초기화
+  setTimeout(()=>{ init3dRigs(); }, 1200);
+});
+function init3dRigs(){
+  // Camera rig
+  const camEl = document.getElementById('gCamRig3d');
+  if(camEl){
+    if(!_camRigScene) initCamRig3d();
+    else drawCamRig();
+  }
+  // Light rig
+  const lightEl = document.getElementById('gLightRig3d');
+  if(lightEl) initLC('g');
+}
+
+
+
+
+
+
+// ── NODE EDITOR STUBS
+const G={gridW:1,gridH:1,curImg:null,lastOutMime:'image/png'};
+const E={curImg:null};
+const SHOTS=[{id:'ECU'},{id:'CU'},{id:'MCU'},{id:'MS'},{id:'MWS'},{id:'WS'},{id:'EWS'}];
+function toast(msg,t){setMsg(msg,2000);}
+function updGLens(){}
+function updGAperture(){}
+function updateCamInfo(){const el=document.getElementById('gCamInfoTxt');if(el)el.textContent='카메라 설정';}
+
+// ═══ THREE.JS GIZMO ═══
+// ── Three.js 3D Light Gizmo ──────────────────────────────────────
+
+function mkGizmo(containerId, prefix) {
+  const THREE = window.THREE;
+  if (!THREE) { window._onThreeReady = () => mkGizmo(containerId, prefix); return null; }
+  const el = document.getElementById(containerId);
+  if (!el) return null;
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  const W = el.offsetWidth || 300, H = el.offsetHeight || 220;
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x0a0a18, 1);
+  el.appendChild(renderer.domElement);
+  renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;';
+
+  const scene = new THREE.Scene();
+
+  // Tight isometric camera — FOV 22, dist 9 keeps subject ~40% of frame
+  const camera = new THREE.PerspectiveCamera(22, W / H, 0.1, 100);
+  const ISO_R = 9, ISO_Y = Math.PI / 4, ISO_P = Math.atan(1 / Math.sqrt(2));
+  camera.position.set(
+    ISO_R * Math.cos(ISO_P) * Math.sin(ISO_Y),
+    ISO_R * Math.sin(ISO_P),
+    ISO_R * Math.cos(ISO_P) * Math.cos(ISO_Y)
+  );
+  camera.lookAt(0, 0, 0);
+
+  // Tight grid: ±2 units, 0.5 spacing
+  const gMat = new THREE.LineBasicMaterial({ color: 0x1e1e44, transparent: true, opacity: 0.85 });
+  for (let i = -2; i <= 2; i += 0.5) {
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(-2,0,i), new THREE.Vector3(2,0,i)]), gMat));
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(i,0,-2), new THREE.Vector3(i,0,2)]), gMat));
+  }
+
+  // Direction labels at ±1.6 — well within viewport
+  const mkLbl = (txt, col) => {
+    const cv = document.createElement('canvas'); cv.width = 96; cv.height = 36;
+    const ctx = cv.getContext('2d');
+    ctx.font = 'bold 15px monospace'; ctx.fillStyle = col;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, 48, 18);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    sp.scale.set(0.75, 0.28, 1);
+    return sp;
+  };
+  const LD = 1.6;
+  [[0,0.05,LD,'FRONT','#4488ff'],[0,0.05,-LD,'BACK','#6666aa'],
+   [LD,0.05,0,'RIGHT','#44bb77'],[-LD,0.05,0,'LEFT','#44bb77'],
+   [0,1.25,0,'TOP','#aaaacc']].forEach(([x,y,z,t,c])=>{
+    const l=mkLbl(t,c); l.position.set(x,y,z); scene.add(l);
+  });
+
+  // Subject box (unit cube)
+  const boxMat = new THREE.MeshStandardMaterial({ color:0x334466, roughness:0.55, metalness:0.2 });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), boxMat);
+  box.castShadow = true; box.receiveShadow = true; scene.add(box);
+  // Front face tint
+  const ff = new THREE.Mesh(new THREE.PlaneGeometry(0.85,0.85),
+    new THREE.MeshBasicMaterial({color:0x2244aa,transparent:true,opacity:0.28,side:THREE.DoubleSide}));
+  ff.position.set(0,0,0.502); scene.add(ff);
+  // Edges
+  scene.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),
+    new THREE.LineBasicMaterial({color:0x5566aa,transparent:true,opacity:0.7})));
+  // Ground
+  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(8,8), new THREE.MeshLambertMaterial({color:0x1a1a35}));
+  gnd.rotation.x = -Math.PI/2; gnd.position.y = -0.5; gnd.receiveShadow=true; scene.add(gnd);
+
+  // Ambient
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+  // Orbit rings (decorative)
+  const mkRing=(R,col,axis)=>{
+    const pts=[];
+    for(let i=0;i<=64;i++){const a=(i/64)*Math.PI*2;
+      pts.push(axis==='h'?new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R)
+                         :new THREE.Vector3(0,Math.sin(a)*R,Math.cos(a)*R));}
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.18}));
+  };
+  scene.add(mkRing(2.2,0x4466ff,'h'));
+  scene.add(mkRing(2.2,0xaa44ff,'v'));
+
+  // Dynamic lights
+  let dynLights = [], gizmoGroup = null;
+
+  // dist 1-10 → scene radius 0.9-3.2 (always visible)
+  const distToR = d => 0.7 + ((d||5)-1)/9 * 2.0;
+
+  const d2r = d => d * Math.PI / 180;
+
+  function buildMulti(lights, activeIdx) {
+    if (gizmoGroup) scene.remove(gizmoGroup);
+    gizmoGroup = new THREE.Group();
+    dynLights.forEach(l => { scene.remove(l); if(l.target) scene.remove(l.target); }); dynLights = [];
+
+    lights.forEach((l, i) => {
+      const radius = distToR(l.dist);
+      const phi2 = d2r(90 - (l.rotV||0));
+      const th2  = d2r(l.rotH||0);
+      const px = radius * Math.sin(phi2) * Math.cos(th2);
+      const py = radius * Math.cos(phi2);
+      const pz = radius * Math.sin(phi2) * Math.sin(th2);
+      const pos = new THREE.Vector3(px, py, pz);
+
+      const hexInt = parseInt((l.colorHex||'#ffffff').replace('#',''), 16);
+      const nb = (l.bright||100) / 100;
+      const isActive = i === activeIdx;
+
+      // THREE light — type determines illumination character
+      let threeLight;
+      const d2rL = d => d * Math.PI / 180;
+      const ltype2 = l.type || 'point';
+      if (ltype2 === 'spot') {
+        // hard → penumbra 0 (crisp), soft → penumbra from slider
+        const hardMode = l.hard === 'hard';
+        const penumbraVal = hardMode ? 0 : Math.max(0, Math.min(0.99, (l.penumbra||50)/100));
+        const sl = new THREE.SpotLight(hexInt, Math.pow(nb,1.4)*10, 10,
+          d2rL((l.angle||45)/2),
+          penumbraVal,
+          hardMode ? 2.5 : 1.2
+        );
+        sl.position.copy(pos);
+        // Apply tiltX/Y to spotlight direction
+        // Base direction: from pos toward origin
+        const baseDir = new THREE.Vector3().sub(pos).normalize();
+        const upv2 = Math.abs(baseDir.y)>0.99 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+        const tq = new THREE.Quaternion().setFromRotationMatrix(
+          new THREE.Matrix4().lookAt(pos, new THREE.Vector3(), upv2));
+        const ro2=l.roll||0, tx2=l.tiltX||0, ty2=l.tiltY||0;
+        if(ro2) tq.premultiply(new THREE.Quaternion().setFromAxisAngle(baseDir, d2rL(ro2)));
+        if(tx2){const ax2=new THREE.Vector3(1,0,0).applyQuaternion(tq);
+          tq.premultiply(new THREE.Quaternion().setFromAxisAngle(ax2, d2rL(tx2)));}
+        if(ty2){const ay2=new THREE.Vector3(0,1,0).applyQuaternion(tq);
+          tq.premultiply(new THREE.Quaternion().setFromAxisAngle(ay2, d2rL(ty2)));}
+        // Local -Z axis of the tilted quaternion = light direction
+        const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(tq);
+        const targetPos = pos.clone().add(fwd.multiplyScalar(5));
+        sl.target.position.copy(targetPos);
+        sl.castShadow = isActive;
+        sl.shadow.mapSize.width = 512; sl.shadow.mapSize.height = 512;
+        scene.add(sl); scene.add(sl.target);
+        dynLights.push(sl, sl.target);
+        threeLight = sl;
+      } else if (ltype2 === 'area') {
+        // RectAreaLight — no shadows in three.js but soft wrap
+        let RectAreaLight = THREE.RectAreaLight;
+        if (!RectAreaLight) {
+          // Fallback to PointLight if RectAreaLight unavailable
+          const al = new THREE.PointLight(hexInt, nb*3, 18);
+          al.position.copy(pos); scene.add(al); dynLights.push(al); threeLight=al;
+        } else {
+          const pw = (l.panelW||2)*0.9, ph = (l.panelH||1.5)*0.9;
+          const al = new RectAreaLight(hexInt, Math.pow(nb,1.3)*12, pw, ph);
+          al.position.copy(pos);
+          // Apply tilt to RectAreaLight orientation
+          const aBase = new THREE.Vector3().sub(pos).normalize();
+          const aUp = Math.abs(aBase.y)>0.99 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+          const aq = new THREE.Quaternion().setFromRotationMatrix(
+            new THREE.Matrix4().lookAt(pos, new THREE.Vector3(), aUp));
+          const aro=l.roll||0, atx=l.tiltX||0, aty=l.tiltY||0;
+          if(aro) aq.premultiply(new THREE.Quaternion().setFromAxisAngle(aBase, d2rL(aro)));
+          if(atx){const aax=new THREE.Vector3(1,0,0).applyQuaternion(aq);
+            aq.premultiply(new THREE.Quaternion().setFromAxisAngle(aax, d2rL(atx)));}
+          if(aty){const aay=new THREE.Vector3(0,1,0).applyQuaternion(aq);
+            aq.premultiply(new THREE.Quaternion().setFromAxisAngle(aay, d2rL(aty)));}
+          al.quaternion.copy(aq);
+          scene.add(al); dynLights.push(al); threeLight=al;
+        }
+      } else {
+        // Point light — omnidirectional glow
+        const pr = (l.pointRadius||0.5);
+        const isHard = l.hard === 'hard';
+        const plIntensity = Math.pow(nb, 1.6) * 18 * (1 + pr * 0.15);
+        const plRange = 5 + pr * 3 + nb * 4;
+        const pl = new THREE.PointLight(hexInt, plIntensity, plRange);
+        pl.position.copy(pos);
+        pl.castShadow = isActive;
+        pl.shadow.mapSize.width = isHard ? 1024 : 256;
+        pl.shadow.mapSize.height = isHard ? 1024 : 256;
+        pl.shadow.radius = isHard ? 1 : 4; // shadow blur
+        scene.add(pl); dynLights.push(pl); threeLight=pl;
+      }
+
+      // Orientation: face toward origin
+      const dir = new THREE.Vector3().sub(pos).normalize();
+      const upv = Math.abs(dir.y) > 0.99 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+      const q = new THREE.Quaternion().setFromRotationMatrix(
+        new THREE.Matrix4().lookAt(pos, new THREE.Vector3(), upv));
+      const ro=l.roll||0, tx=l.tiltX||0, ty=l.tiltY||0;
+      if(ro) q.premultiply(new THREE.Quaternion().setFromAxisAngle(dir, d2r(ro)));
+      if(tx){const ax=new THREE.Vector3(1,0,0).applyQuaternion(q);q.premultiply(new THREE.Quaternion().setFromAxisAngle(ax,d2r(tx)));}
+      if(ty){const ay=new THREE.Vector3(0,1,0).applyQuaternion(q);q.premultiply(new THREE.Quaternion().setFromAxisAngle(ay,d2r(ty)));}
+
+      const bodyGrp = new THREE.Group();
+      bodyGrp.position.copy(pos);
+      bodyGrp.quaternion.copy(q);
+
+      const icoMat = new THREE.MeshStandardMaterial({
+        color:hexInt, emissive:hexInt, emissiveIntensity: nb*2.5 });
+      const sc = isActive ? 1.0 : 0.6;
+      const ltype = l.type || 'point';
+
+      if (ltype === 'point') {
+        // pointRadius 0.1-3 → icon 0.04-0.22 (직관적으로 커짐)
+        const pr = l.pointRadius || 0.5;
+        const iconR = (0.04 + Math.log1p(pr) * 0.05) * sc;
+        bodyGrp.add(new THREE.Mesh(
+          new THREE.SphereGeometry(iconR, 16, 16), icoMat));
+        // 큰 반경엔 외곽 글로우 링 추가
+        if (pr > 0.5) {
+          const glowR = iconR * 1.6;
+          const gpts = [];
+          for(let j=0;j<=32;j++){const a=(j/32)*Math.PI*2;
+            gpts.push(new THREE.Vector3(Math.cos(a)*glowR,Math.sin(a)*glowR,0));}
+          const gring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(gpts),
+            new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:(pr-1)/2*0.6+0.2}));
+          gring.lookAt(camera.position);
+          bodyGrp.add(gring);
+        }
+
+      } else if (ltype === 'spot') {
+        const sz = 0.06 * sc;
+        const coneLen = (0.26 + nb*0.06) * sc;
+        const spotAngle = Math.min(85, Math.max(3, l.angle||45));
+        const coneR = coneLen * Math.tan(d2r(spotAngle/2));
+        // Penumbra: show inner/outer cone rings
+        const innerR = coneR * (1 - (l.penumbra||50)/100 * 0.7);
+        // Head
+        bodyGrp.add(new THREE.Mesh(new THREE.SphereGeometry(sz,10,10), icoMat));
+        // Cone body (open, -Z direction in local space)
+        const coneMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(coneR, coneLen, 20, 1, true),
+          new THREE.MeshStandardMaterial({color:hexInt,emissive:hexInt,
+            emissiveIntensity:nb*0.5,transparent:true,opacity:0.28,side:THREE.DoubleSide}));
+        coneMesh.rotation.x = Math.PI/2;
+        coneMesh.position.z = -coneLen/2;
+        bodyGrp.add(coneMesh);
+        // 4 edge rays
+        for(let a=0;a<4;a++){
+          const ang = d2r(a*90);
+          bodyGrp.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(0,0,0),
+              new THREE.Vector3(Math.cos(ang)*coneR, Math.sin(ang)*coneR, -coneLen)]),
+            new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.9})));
+        }
+        // Rim circle
+        const rp=[];
+        for(let j=0;j<=32;j++){const a=(j/32)*Math.PI*2;
+          rp.push(new THREE.Vector3(Math.cos(a)*coneR,Math.sin(a)*coneR,-coneLen));}
+        bodyGrp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rp),
+          new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.9})));
+        // Inner penumbra ring (soft edge indicator)
+        const irp=[];
+        for(let j=0;j<=32;j++){const a=(j/32)*Math.PI*2;
+          irp.push(new THREE.Vector3(Math.cos(a)*innerR,Math.sin(a)*innerR,-coneLen));}
+        bodyGrp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(irp),
+          new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.45})));
+
+      } else if (ltype === 'area') {
+        const pw = Math.min(0.8, (l.panelW||2)*0.1) * sc, ph = Math.min(0.6, (l.panelH||1.5)*0.1) * sc;
+        // Panel face
+        bodyGrp.add(new THREE.Mesh(new THREE.PlaneGeometry(pw*2,ph*2),
+          new THREE.MeshStandardMaterial({color:hexInt,emissive:hexInt,
+            emissiveIntensity:nb*0.9,transparent:true,opacity:0.55,side:THREE.DoubleSide})));
+        // Frame
+        [[-pw,-ph,pw,-ph],[pw,-ph,pw,ph],[pw,ph,-pw,ph],[-pw,ph,-pw,-ph]].forEach(([x1,y1,x2,y2])=>{
+          bodyGrp.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,y1,0),new THREE.Vector3(x2,y2,0)]),
+            new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.95})));
+        });
+        // Normal direction arrow
+        bodyGrp.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-pw*1.4)]),
+          new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.8})));
+      }
+
+      gizmoGroup.add(bodyGrp);
+
+      // Connection line
+      gizmoGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), pos.clone()]),
+        new THREE.LineBasicMaterial({color: isActive?hexInt:0x334466,
+          transparent:true, opacity:isActive?0.8:0.22})));
+
+      // Active ring
+      if (isActive) {
+        const rp=[];
+        for(let j=0;j<=32;j++){const a=(j/32)*Math.PI*2;
+          rp.push(new THREE.Vector3(Math.cos(a)*0.13,Math.sin(a)*0.13,0));}
+        const ring=new THREE.Line(new THREE.BufferGeometry().setFromPoints(rp),
+          new THREE.LineBasicMaterial({color:hexInt,transparent:true,opacity:0.9}));
+        ring.position.copy(pos); ring.lookAt(camera.position);
+        gizmoGroup.add(ring);
+      }
+    });
+
+    // Update box emissive
+    const al = lights[activeIdx]||lights[0];
+    if (al && boxMat) {
+      boxMat.emissive.set(parseInt((al.colorHex||'#000').replace('#',''),16));
+      boxMat.emissiveIntensity = (al.bright||100)/100 * 0.1;
+    }
+    scene.add(gizmoGroup);
+  }
+
+  // compat single-light wrapper
+  function buildGizmo(rotH,rotV,roll,tiltX,tiltY,colorHex,bright,lightType,angle,panelW,panelH,dist){
+    buildMulti([{rotH,rotV,roll,tiltX,tiltY,colorHex,bright,type:lightType,angle,panelW,panelH,dist}],0);
+  }
+
+  let raf;
+  (function loop(){ raf=requestAnimationFrame(loop); renderer.render(scene,camera); })();
+
+  let _roRaf1=0;
+  new ResizeObserver(()=>{
+    cancelAnimationFrame(_roRaf1);
+    _roRaf1=requestAnimationFrame(()=>{
+      const w=el.clientWidth||300,h=el.clientHeight||220;
+      if(w<2||h<2)return;
+      renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+    });
+  }).observe(el);
+
+  return {
+    update: buildGizmo,
+    updateMulti: buildMulti,
+    destroy: ()=>{ cancelAnimationFrame(raf); renderer.dispose(); }
+  };
+}
+
+// ── Init gizmos for gen (g) and edit (e) tabs ─────────────────────
+let _gizmoG = null, _gizmoE = null;
+
+function initLC(p) {
+  const id = p==='g' ? 'gLightRig3d' : 'eLc3d';
+  const el = document.getElementById(id);
+  if (!el) { console.warn('initLC: container not found:', id); return null; }
+  // 컨테이너가 아직 layout 안됐으면 재시도
+  if (el.offsetWidth < 10) {
+    setTimeout(()=>initLC(p), 120);
+    return null;
+  }
+  if (p==='g' && _gizmoG) { _gizmoG.destroy(); _gizmoG=null; }
+  if (p==='e' && _gizmoE) { _gizmoE.destroy(); _gizmoE=null; }
+  const g = mkGizmo(id, p);
+  if (p==='g') { _gizmoG = g; } else { _gizmoE = g; }
+  if (g) drawLC(p);
+  return g;
+}
+
+
+
+// ═══ CAM RIG + LIGHT RIG ═══
+const CAM_RIG = {
+  count: 1,
+  yaw: 0,
+  pitch: 0,
+  roll: 0,
+  dist: 7,
+  presetName: '아이레벨',
+};
+
+let _camRig3d = null;  // Three.js gizmo for camera rig
+let _lightRig3d = null; // Three.js gizmo for lighting rig
+
+// ── Tab switcher ──────────────────────────────────────────────────
+function switchRigTab(tab) {
+  const isCam = tab === 'cam';
+  document.getElementById('rigPanelCam').style.display   = isCam ? 'block' : 'none';
+  document.getElementById('rigPanelLight').style.display = isCam ? 'none'  : 'block';
+
+  const btnCam   = document.getElementById('rigTabCam');
+  const btnLight = document.getElementById('rigTabLight');
+  if (btnCam) {
+    btnCam.style.background   = isCam ? 'var(--s2)' : 'var(--s1)';
+    btnCam.style.color        = isCam ? 'var(--acc)' : 'var(--tx3)';
+    btnLight.style.background = isCam ? 'var(--s1)' : 'var(--s2)';
+    btnLight.style.color      = isCam ? 'var(--tx3)' : 'var(--acc2)';
+  }
+
+  // Init 3D viewport when tab first shown
+  setTimeout(() => {
+    if (isCam) {
+      if (!_camRig3d) _camRig3d = initCamRig3d();
+      else drawCamRig();
+    } else {
+      // Always reinit light gizmo when switching to light tab
+      initLC('g');
+    }
+  }, 80);
+}
+
+// ── Camera Rig controls ──────────────────────────────────────────
+function onCamCountChange(v) {
+  CAM_RIG.count = parseInt(v);
+  document.getElementById('gCamCountVal').textContent = v;
+  updateCamInfo();
+  drawCamRig();
+}
+function onCamRigChange(axis, v) {
+  const n = parseFloat(v) || 0;
+  const key = (axis === 'yaw') ? 'yaw' : (axis === 'pitch') ? 'pitch' : (axis === 'roll') ? 'roll' : 'dist';
+  CAM_RIG[key] = n;
+
+  const slId  = (axis === 'yaw') ? 'gCamYawSl'   : (axis === 'pitch') ? 'gCamPitchSl' : (axis === 'roll') ? 'gCamRollSl' : 'gCamDistSl';
+  const numId = (axis === 'yaw') ? 'gCamYawNum'  : (axis === 'pitch') ? 'gCamPitchNum': (axis === 'roll') ? 'gCamRollNum': 'gCamDistNum';
+
+  const sl = document.getElementById(slId), nm = document.getElementById(numId);
+  if (sl) sl.value = n;
+  if (nm) nm.value = n;
+
+  // When user tweaks values manually, treat as custom unless a preset was just applied
+  if (key !== 'dist' && !CAM_RIG._settingPreset) {
+    CAM_RIG.presetName = 'custom';
+    const lbl = document.getElementById('gAngleLbl');
+    if (lbl) lbl.textContent = 'custom';
+  }
+  drawCamRig();
+}
+function setCamPreset(yaw, pitch, name, roll=0) {
+  CAM_RIG._settingPreset = true;
+  CAM_RIG.yaw = yaw;
+  CAM_RIG.pitch = pitch;
+  CAM_RIG.roll = roll;
+  CAM_RIG.presetName = name;
+
+  onCamRigChange('yaw', yaw);
+  onCamRigChange('pitch', pitch);
+  onCamRigChange('roll', roll);
+
+  CAM_RIG._settingPreset = false;
+
+  const lbl = document.getElementById('gAngleLbl');
+  if (lbl) lbl.textContent = name;
+}
+function updateCamInfo() {
+  const el = document.getElementById('gCamInfoTxt');
+  if (!el) return;
+  const cams = CAM_RIG.count || 1;
+  const gw = 1;
+  const gh = 1;
+  const gridTotal = gw * gh;
+  const total = cams * gridTotal;
+  if(gridTotal > 1){
+    el.innerHTML = `카메라 <b style="color:var(--acc4)">${cams}대</b> × 그리드 <b style="color:var(--acc3)">${gw}×${gh}(${gridTotal}장)</b> = 총 <b style="color:var(--acc)">${total}장</b> 생성`;
+  } else {
+    el.innerHTML = `카메라 <b style="color:var(--acc4)">${cams}대</b> = 총 <b style="color:var(--acc)">${total}장</b> 생성`;
+  }
+}
+
+// ── Camera Rig 3D (Three.js) ──────────────────────────────────────
+let _camRigScene = null, _camRigRenderer = null, _camRigCamera = null;
+let _camRigGroup = null, _camRigRaf = null;
+let _camRigSubject = null, _camRigSubMat = null;
+let _camRigPovCam = null, _camRigPovRenderer = null;
+let _camRigViewTheta = Math.atan2(4,4), _camRigViewPhi = 0.55, _camRigViewR = 9;
+let _camRigDrag = false, _camRigLX = 0, _camRigLY = 0;
+
+
+function initCamRig3d() {
+  const THREE = window.THREE;
+  if (!THREE) { setTimeout(()=>initCamRig3d(),200); return null; }
+  const el = document.getElementById('gCamRig3d');
+  if (!el) return null;
+  if (el.offsetWidth < 10) { setTimeout(()=>initCamRig3d(),120); return null; }
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  const W = el.offsetWidth||340, H = el.offsetHeight||280;
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(W,H);
+  renderer.shadowMap.enabled=true;
+  renderer.setClearColor(0x0a0a18,1);
+  el.appendChild(renderer.domElement);
+  renderer.domElement.style.cssText='width:100%;height:100%;display:block;';
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(22,W/H,0.1,100);
+  const ISO_R=9,ISO_Y=Math.PI/4,ISO_P=Math.atan(1/Math.sqrt(2));
+  camera.position.set(
+    ISO_R*Math.cos(ISO_P)*Math.sin(ISO_Y),
+    ISO_R*Math.sin(ISO_P),
+    ISO_R*Math.cos(ISO_P)*Math.cos(ISO_Y));
+  camera.lookAt(0,0,0);
+
+  const gMat=new THREE.LineBasicMaterial({color:0x1e1e44,transparent:true,opacity:0.85});
+  for(let i=-2;i<=2;i+=0.5){
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(-2,0,i),new THREE.Vector3(2,0,i)]),gMat));
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(i,0,-2),new THREE.Vector3(i,0,2)]),gMat));
+  }
+
+  const mkLbl=(txt,col)=>{
+    const cv=document.createElement('canvas');cv.width=96;cv.height=36;
+    const ctx=cv.getContext('2d');ctx.font='bold 15px monospace';ctx.fillStyle=col;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,48,18);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));
+    sp.scale.set(0.75,0.28,1);return sp;
+  };
+  [[0,0.05,1.6,'FRONT','#4488ff'],[0,0.05,-1.6,'BACK','#6666aa'],
+   [1.6,0.05,0,'RIGHT','#44bb77'],[-1.6,0.05,0,'LEFT','#44bb77'],
+   [0,1.25,0,'TOP','#aaaacc']].forEach(([x,y,z,t,c])=>{
+    const l=mkLbl(t,c);l.position.set(x,y,z);scene.add(l);
+  });
+
+  const subMat=new THREE.MeshStandardMaterial({color:0x334466,roughness:0.5,metalness:0.25});
+  const subBox=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),subMat);
+  subBox.castShadow=true;scene.add(subBox);
+  const fp=new THREE.Mesh(new THREE.PlaneGeometry(0.85,0.85),
+    new THREE.MeshBasicMaterial({color:0x2244aa,transparent:true,opacity:0.28,side:THREE.DoubleSide}));
+  fp.position.set(0,0,0.502);scene.add(fp);
+  scene.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),
+    new THREE.LineBasicMaterial({color:0x5566aa,transparent:true,opacity:0.7})));
+
+  const mkRing=(R,col,axis)=>{
+    const pts=[];
+    for(let i=0;i<=64;i++){const a=(i/64)*Math.PI*2;
+      pts.push(axis==='h'?new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R)
+                         :new THREE.Vector3(0,Math.sin(a)*R,Math.cos(a)*R));}
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.18}));
+  };
+  scene.add(mkRing(2.2,0x4466ff,'h'));
+  scene.add(mkRing(2.2,0xaa44ff,'v'));
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  scene.add(new THREE.DirectionalLight(0xffffff,0.4));
+
+  _camRigScene=scene;_camRigRenderer=renderer;_camRigCamera=camera;
+
+  // POV preview renderer (offscreen → canvas)
+  const previewCanvas = document.getElementById('gCamPreview');
+  let _povRenderer = null;
+  if (previewCanvas) {
+    _povRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true });
+    _povRenderer.setPixelRatio(1);
+    _povRenderer.setSize(110, 82);
+    _povRenderer.setClearColor(0x06060e, 1);
+  }
+  // POV camera: perspective matching a real camera (FOV 50)
+  const _povCam = new THREE.PerspectiveCamera(50, 110/82, 0.1, 50);
+  _povCam.filmGauge = 35;
+  // apply current focal length so POV actually zooms with lens setting
+  try{ _povCam.setFocalLength(getActiveLensMm()); _povCam.updateProjectionMatrix(); }catch(e){}
+  _camRigPovCam = _povCam;
+  _camRigPovRenderer = _povRenderer;
+
+  let _roRaf2=0;
+  new ResizeObserver(()=>{
+    cancelAnimationFrame(_roRaf2);
+    _roRaf2=requestAnimationFrame(()=>{
+      const w=el.clientWidth||340,h=el.clientHeight||280;
+      if(w<2||h<2)return;
+      renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+    });
+  }).observe(el);
+
+  if(_camRigRaf) cancelAnimationFrame(_camRigRaf);
+  const loop=()=>{
+    _camRigRaf=requestAnimationFrame(loop);
+    renderer.render(scene,camera);
+    // Render POV preview from first camera position
+    if(_camRigPovRenderer && _camRigPovCam && _camRigScene) {
+      _camRigPovRenderer.render(_camRigScene, _camRigPovCam);
+    }
+  };
+  loop();
+  drawCamRig();
+  return {scene,renderer,camera};
+}
+
+function drawCamRig() {
+  if(!_camRigScene)return;
+  const THREE=window.THREE;if(!THREE)return;
+  if(_camRigGroup)_camRigScene.remove(_camRigGroup);
+  _camRigGroup=new THREE.Group();
+
+  const count=CAM_RIG.count;
+  const radius=0.9+((CAM_RIG.dist||5)-1)/11*2.3;
+  const pitch=CAM_RIG.pitch*Math.PI/180;
+  const baseYaw=CAM_RIG.yaw*Math.PI/180;
+  const rollRad=(CAM_RIG.roll||0)*Math.PI/180;
+
+  for(let i=0;i<count;i++){
+    const yaw=baseYaw+(i/count)*Math.PI*2;
+    const px=radius*Math.cos(pitch)*Math.sin(yaw);
+    const py=radius*Math.sin(pitch);
+    const pz=radius*Math.cos(pitch)*Math.cos(yaw);
+
+    const cg=new THREE.Group();
+    cg.position.set(px,py,pz);
+    cg.lookAt(0,0,0);
+
+    const isFirst=i===0;
+    if(isFirst && rollRad){ cg.rotateZ(rollRad); }
+    const body=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.13,0.15),
+      new THREE.MeshStandardMaterial({color:isFirst?0xff2244:0x8888aa,
+        roughness:0.5,metalness:0.5,transparent:!isFirst,opacity:isFirst?1:0.6}));
+    cg.add(body);
+    const lens=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.045,0.1,10),
+      new THREE.MeshStandardMaterial({color:0x111122,roughness:0.3,metalness:0.9}));
+    lens.rotation.x=Math.PI/2;lens.position.z=0.11;cg.add(lens);
+    _camRigGroup.add(cg);
+
+    _camRigGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0,0,0),new THREE.Vector3(px,py,pz)]),
+      new THREE.LineBasicMaterial({color:isFirst?0xff2244:0x334477,
+        transparent:true,opacity:isFirst?0.9:0.28})));
+  }
+  _camRigScene.add(_camRigGroup);
+
+  // Update POV camera to match first camera position & look at subject
+  if (_camRigPovCam && CAM_RIG.count > 0) {
+    const yaw0  = CAM_RIG.yaw * Math.PI / 180;
+    const pitch0= CAM_RIG.pitch * Math.PI / 180;
+    const r0    = 0.9 + ((CAM_RIG.dist||5)-1)/11*2.3;
+    const px0 = r0*Math.cos(pitch0)*Math.sin(yaw0);
+    const py0 = r0*Math.sin(pitch0);
+    const pz0 = r0*Math.cos(pitch0)*Math.cos(yaw0);
+    _camRigPovCam.position.set(px0, py0, pz0);
+    _camRigPovCam.up.set(0,1,0);
+    _camRigPovCam.lookAt(0, 0, 0);
+    // Apply roll around the camera's *local* view axis so 0° is always level.
+    _camRigPovCam.rotation.z = 0;
+    if(rollRad){ _camRigPovCam.rotateZ(rollRad); }
+    applyLensToRigPreview();
+    _camRigPovCam.updateProjectionMatrix();
+  }
+}
+
+// Stub for compatibility with old camera angle function
+function setGAngle(yaw, tilt, name) { setCamPreset(yaw, tilt, name); }
+function gSyncFromSlider(k, v) {}
+function gSyncFromNum(k, v) {}
+function _camSyncUI(p) {}
+
+// Lens helpers — use CAM_RIG data (lens mm from slider if added, else default 35)
+function getActiveLensMm() {
+  return CAM_RIG.lens || 35;
+}
+function applyLensToRigPreview() {
+  if (!_camRigPovCam) return;
+  const mm = getActiveLensMm();
+  try { _camRigPovCam.setFocalLength(mm); } catch(e) {
+    // fallback: convert focal length to FOV
+    _camRigPovCam.fov = 2 * Math.atan(21.634 / mm) * (180 / Math.PI);
+  }
+  _camRigPovCam.updateProjectionMatrix();
+}
+
+// ════════════════════════════════════════════
+// LIGHT CONTROL FUNCTIONS
+// ════════════════════════════════════════════════
+
+// ── Multi-light state ───────────────────────────
+// LIGHTS: array of independent light objects
+const MAX_LIGHTS = 6;
+let LIGHTS = [{
+  rotH:0, rotV:30, roll:0, tiltX:0, tiltY:0,
+  dist:5, colorHex:'#ffffff', bright:500,
+  type:'point', angle:45, penumbra:50, pointRadius:0.5, panelW:2, panelH:1.5,
+  temp:'daylight', hard:'soft'
+}];
+let ACTIVE_LIGHT = 0; // currently selected light index
+
+function getActiveLight() { return LIGHTS[ACTIVE_LIGHT] || LIGHTS[0]; }
+
+function onLightCountChange(v) {
+  const n = Math.max(1, Math.min(MAX_LIGHTS, parseInt(v)||1));
+  document.getElementById('gLightCountVal').textContent = n;
+  // Add or remove lights
+  while (LIGHTS.length < n) {
+    // Clone active with slight offset
+    const base = LIGHTS[LIGHTS.length-1];
+    LIGHTS.push({...base, rotH: (base.rotH + 45*(LIGHTS.length)) % 360,
+      colorHex: ['#ffffff','#ffaa44','#44aaff','#ff4488','#44ffaa','#ffff44'][LIGHTS.length % 6],
+      type:'point', angle:45, penumbra:50, pointRadius:0.5, panelW:2, panelH:1.5
+    });
+  }
+  while (LIGHTS.length > n) LIGHTS.pop();
+  if (ACTIVE_LIGHT >= LIGHTS.length) ACTIVE_LIGHT = LIGHTS.length - 1;
+  updateLightSelector();
+  syncLightUI();
+  redrawAllLights();
+}
+
+function updateLightSelector() {
+  const el = document.getElementById('gLightSelector');
+  if (!el) return;
+  el.innerHTML = '';
+  LIGHTS.forEach((l, i) => {
+    const btn = document.createElement('button');
+    btn.style.cssText = `width:22px;height:22px;border-radius:50%;border:2px solid ${i===ACTIVE_LIGHT?'#fff':'rgba(255,255,255,0.2)'};
+      background:${l.colorHex};cursor:pointer;transition:all .15s;flex-shrink:0;`;
+    btn.title = `조명 ${i+1}`;
+    btn.onclick = () => { ACTIVE_LIGHT = i; updateLightSelector(); syncLightUI(); };
+    el.appendChild(btn);
+  });
+}
+
+function syncLightUI() {
+  const l = getActiveLight();
+  const p = 'g';
+  const setV = (id, v) => { const e=document.getElementById(id); if(e) e.value=v; };
+  setV(p+'LRotHSl', l.rotH);   setV(p+'LRotHNum', l.rotH);
+  setV(p+'LRotVSl', l.rotV);   setV(p+'LRotVNum', l.rotV);
+  setV(p+'LTiltXSl', l.tiltX); setV(p+'LTiltXNum', l.tiltX);
+  setV(p+'LTiltYSl', l.tiltY); setV(p+'LTiltYNum', l.tiltY);
+  setV(p+'LDistSl', l.dist);   setV(p+'LDistNum', l.dist);
+  var _bs=Math.max(1,Math.min(10,Math.round((l.bright||500)/100)));setV('gBrightSl',_bs);
+  const brightVal = document.getElementById('gBrightVal');
+  if(brightVal)brightVal.textContent=_bs;var _bni=document.getElementById('gBrightNum');if(_bni)_bni.value=_bs;
+  setV('gColorPick', l.colorHex);
+  setV('gColorHex', l.colorHex.toUpperCase());
+  // Type buttons + size panel
+  ['Point','Spot','Area'].forEach(t => {
+    const btn = document.getElementById('gLType'+t);
+    if (!btn) return;
+    const active = l.type === t.toLowerCase();
+    btn.style.background = active ? 'rgba(251,191,36,0.25)' : 'var(--s2)';
+    btn.style.borderColor = active ? 'rgba(251,191,36,0.7)' : 'var(--b1)';
+    btn.style.color = active ? '#fbbf24' : 'var(--tx3)';
+    const panel = document.getElementById('gSize'+t);
+    if (panel) panel.style.display = active ? (t==='Point'?'flex':'flex') : 'none';
+  });
+  // Size values
+  const sp=document.getElementById('gLSizePointSl'),spn=document.getElementById('gLSizePointNum');
+  if(sp)sp.value=l.pointRadius||0.5;if(spn)spn.value=l.pointRadius||0.5;
+  const ss=document.getElementById('gLSizeSpotSl'),ssn=document.getElementById('gLSizeSpotNum');
+  if(ss)ss.value=l.angle||45;if(ssn)ssn.value=l.angle||45;
+  const spe=document.getElementById('gLSpotPenumbraSl'),spen=document.getElementById('gLSpotPenumbraNum');
+  if(spe)spe.value=l.penumbra||50;if(spen)spen.value=l.penumbra||50;
+  const aw=document.getElementById('gLAreaWSl'),awn=document.getElementById('gLAreaWNum');
+  if(aw)aw.value=l.panelW||2;if(awn)awn.value=l.panelW||2;
+  const ah=document.getElementById('gLAreaHSl'),ahn=document.getElementById('gLAreaHNum');
+  if(ah)ah.value=l.panelH||1.5;if(ahn)ahn.value=l.panelH||1.5;
+  // Soft/Hard buttons
+  const sb2=document.getElementById('gSoftBtn'), hb2=document.getElementById('gHardBtn');
+  if(sb2){ sb2.classList.toggle('active', (l.hard||'soft')==='soft'); }
+  if(hb2){ hb2.classList.toggle('active', l.hard==='hard'); }
+  // Dot color
+  const dot = document.getElementById('gActiveLightDot');
+  if (dot) dot.style.background = l.colorHex;
+}
+
+function redrawAllLights() {
+  if (!_gizmoG) return;
+  // Pass all lights to gizmo
+  if (_gizmoG.updateMulti) {
+    _gizmoG.updateMulti(LIGHTS, ACTIVE_LIGHT);
+  } else {
+    const l = getActiveLight();
+    _gizmoG.update(l.rotH, l.rotV, l.roll, l.tiltX, l.tiltY,
+      l.colorHex, l.bright, l.type, l.angle, l.panelW, l.panelH, l.dist);
+  }
+}
+
+// ── _lightSyncUI (compat) ───────────────────────
+function _lightSyncUI(p) { if(p==='g') syncLightUI(); }
+
+// ── Individual setters ──────────────────────────
+function setLightRotH(p, v) {
+  const l=getActiveLight(); l.rotH=parseFloat(v)||0;
+  const sl=document.getElementById(p+'LRotHSl'), nm=document.getElementById(p+'LRotHNum');
+  if(sl)sl.value=l.rotH; if(nm)nm.value=l.rotH;
+  redrawAllLights();
+}
+function setLightRotV(p, v) {
+  const l=getActiveLight(); l.rotV=parseFloat(v)||0;
+  const sl=document.getElementById(p+'LRotVSl'), nm=document.getElementById(p+'LRotVNum');
+  if(sl)sl.value=l.rotV; if(nm)nm.value=l.rotV;
+  redrawAllLights();
+}
+function setLightRoll(p, v) {
+  const l=getActiveLight(); l.roll=parseFloat(v)||0; redrawAllLights();
+}
+function setLightTiltX(p, v) {
+  const l=getActiveLight(); l.tiltX=parseFloat(v)||0;
+  const sl=document.getElementById(p+'LTiltXSl'), nm=document.getElementById(p+'LTiltXNum');
+  if(sl)sl.value=l.tiltX; if(nm)nm.value=l.tiltX;
+  redrawAllLights();
+}
+function setLightTiltY(p, v) {
+  const l=getActiveLight(); l.tiltY=parseFloat(v)||0;
+  const sl=document.getElementById(p+'LTiltYSl'), nm=document.getElementById(p+'LTiltYNum');
+  if(sl)sl.value=l.tiltY; if(nm)nm.value=l.tiltY;
+  redrawAllLights();
+}
+function setLightDist(p, v) {
+  const l=getActiveLight(); l.dist=parseFloat(v)||5;
+  const sl=document.getElementById(p+'LDistSl'), nm=document.getElementById(p+'LDistNum');
+  if(sl)sl.value=l.dist; if(nm)nm.value=l.dist;
+  redrawAllLights();
+}
+function setLightType(p, t) {
+  const l=getActiveLight(); l.type=t;
+  ['Point','Spot','Area'].forEach(tt => {
+    const btn=document.getElementById(p+'LType'+tt);
+    if(!btn)return;
+    const active=tt.toLowerCase()===t;
+    btn.style.background=active?'rgba(251,191,36,0.25)':'var(--s2)';
+    btn.style.borderColor=active?'rgba(251,191,36,0.7)':'var(--b1)';
+    btn.style.color=active?'#fbbf24':'var(--tx3)';
+    const panel=document.getElementById('gSize'+tt);
+    if(panel) panel.style.display=active?'flex':'none';
+  });
+  redrawAllLights();
+}
+function setLightAngle(p, v) {
+  const l=getActiveLight(); l.angle=parseFloat(v)||45; redrawAllLights();
+}
+function setLightSize(p, type, v) {
+  const l=getActiveLight(); const n=parseFloat(v)||1;
+  if(type==='point'){
+    l.pointRadius=Math.max(0.05,Math.min(30,n));
+    const sl=document.getElementById('gLSizePointSl'),nm=document.getElementById('gLSizePointNum');
+    if(sl)sl.value=l.pointRadius;if(nm)nm.value=l.pointRadius;
+  } else if(type==='spot'){
+    l.angle=Math.max(1,Math.min(120,n));
+    const sl=document.getElementById('gLSizeSpotSl'),nm=document.getElementById('gLSizeSpotNum');
+    if(sl)sl.value=l.angle;if(nm)nm.value=l.angle;
+  }
+  redrawAllLights();
+}
+function setLightPenumbra(p, v) {
+  const l=getActiveLight(); l.penumbra=Math.max(0,Math.min(100,parseFloat(v)||50));
+  redrawAllLights();
+}
+function setLightAreaW(p, v) {
+  const l=getActiveLight(); l.panelW=Math.max(0.2,parseFloat(v)||2);
+  const sl=document.getElementById('gLAreaWSl'),nm=document.getElementById('gLAreaWNum');
+  if(sl)sl.value=l.panelW;if(nm)nm.value=l.panelW;
+  redrawAllLights();
+}
+function setLightAreaH(p, v) {
+  const l=getActiveLight(); l.panelH=Math.max(0.2,parseFloat(v)||1.5);
+  const sl=document.getElementById('gLAreaHSl'),nm=document.getElementById('gLAreaHNum');
+  if(sl)sl.value=l.panelH;if(nm)nm.value=l.panelH;
+  redrawAllLights();
+}
+function setLightBright(p,v){var st=Math.max(1,Math.min(10,parseInt(v)||5));var l=getActiveLight();l.bright=st*100;var sl=document.getElementById(p+"BrightSl");if(sl)sl.value=st;var bv=document.getElementById(p+"BrightVal");if(bv)bv.textContent=st;var bn=document.getElementById(p+"BrightNum");if(bn)bn.value=st;redrawAllLights();}
+function setLightBrightNum(p, v) { setLightBright(p,v); }
+function setLightHard(p, t) {
+  const l = getActiveLight(); l.hard = t;
+  const sb = document.getElementById(p+'SoftBtn');
+  const hb = document.getElementById(p+'HardBtn');
+  if (sb) { sb.classList.toggle('active', t==='soft'); }
+  if (hb) { hb.classList.toggle('active', t==='hard'); }
+  redrawAllLights();
+}
+function setLightColorPick(p, v) {
+  const l=getActiveLight(); l.colorHex=v;
+  const hex=document.getElementById('gColorHex'); if(hex)hex.value=v.toUpperCase();
+  updateLightSelector();
+  redrawAllLights();
+}
+function setLightColorHex(p, v) {
+  if(!/^#[0-9a-fA-F]{6}$/.test(v)) return;
+  const l=getActiveLight(); l.colorHex=v;
+  const pick=document.getElementById('gColorPick'); if(pick)pick.value=v;
+  updateLightSelector();
+  redrawAllLights();
+}
+function setLightTemp(p, t) {
+  const l=getActiveLight(); l.temp=t;
+  const TEMPS={daylight:'#fff5e6',tungsten:'#ff9944',cool:'#aaccff',neon:'#ff44cc'};
+  l.colorHex=TEMPS[t]||'#ffffff';
+  const pick=document.getElementById('gColorPick'); if(pick)pick.value=l.colorHex;
+  const hex=document.getElementById('gColorHex'); if(hex)hex.value=l.colorHex.toUpperCase();
+  updateLightSelector();
+  redrawAllLights();
+}
+function setLightPreset(p, preset) {
+  const presets={
+    top:{rotH:0,rotV:0},front:{rotH:0,rotV:90},
+    right:{rotH:90,rotV:45},left:{rotH:-90,rotV:45},
+    back:{rotH:180,rotV:30},bottom:{rotH:0,rotV:180}
+  };
+  const l=getActiveLight();
+  if(presets[preset]){l.rotH=presets[preset].rotH;l.rotV=presets[preset].rotV;}
+  syncLightUI(); redrawAllLights();
+}
+function cycleActiveLight() {
+  ACTIVE_LIGHT = (ACTIVE_LIGHT+1) % LIGHTS.length;
+  updateLightSelector(); syncLightUI();
+}
+
+// ── drawLC / initSphere / drawSphere stubs ───────
+function drawLC(p) {
+  const l=getActiveLight();
+  const g=p==='g'?_gizmoG:_gizmoE;
+  if(!g)return;
+  if(g.updateMulti) g.updateMulti(LIGHTS, ACTIVE_LIGHT);
+  else g.update(l.rotH,l.rotV,l.roll,l.tiltX,l.tiltY,l.colorHex,l.bright,l.type,l.angle,l.panelW,l.panelH,l.dist);
+}
+
+function _sphereState(p){ return p==='e'?E:G; }
+function _sphereIds(p){
+  if(p==='e') return {canvas:'eSphereCanvas', preview:'ePreviewCanvas', rotSl:'eRotSl', rotNum:'eRotNum',
+                      tiltSl:'eTiltSl', tiltNum:'eTiltNum', rollSl:'eRollSl', rollNum:'eRollNum',
+                      angleLbl:'eAngleLbl'};
+  // (generate sphere not used in this UI, but keep for safety)
+  return {canvas:'gSphereCanvas', preview:'gPreviewCanvas', rotSl:'gRotSl', rotNum:'gRotNum',
+          tiltSl:'gTiltSl', tiltNum:'gTiltNum', rollSl:'gRollSl', rollNum:'gRollNum',
+          angleLbl:'gAngleLbl'};
+}
+
+function _classifyAngle(rot, tilt){
+  // Simple heuristic labels
+  const a = Math.abs(tilt);
+  if(a >= 70) return tilt>0 ? '버즈아이' : '웜즈아이';
+  if(tilt >= 25) return '하이앵글';
+  if(tilt <= -25) return '로우앵글';
+  // rear shot heuristic
+  const r = ((rot%360)+360)%360;
+  if(r>150 && r<210) return '후면샷';
+  return '아이레벨';
+}
+
+function _syncSphereUI(p){
+  const S=_sphereState(p), ids=_sphereIds(p);
+  const rot=Math.round(S.rotation||0), tilt=Math.round(S.tilt||0), roll=Math.round(S.roll||0);
+  const rs=document.getElementById(ids.rotSl), rn=document.getElementById(ids.rotNum);
+  const ts=document.getElementById(ids.tiltSl), tn=document.getElementById(ids.tiltNum);
+  const ls=document.getElementById(ids.rollSl), ln=document.getElementById(ids.rollNum);
+  if(rs) rs.value=rot; if(rn) rn.value=rot;
+  if(ts) ts.value=tilt; if(tn) tn.value=tilt;
+  if(ls) ls.value=roll; if(ln) ln.value=roll;
+  const lbl=document.getElementById(ids.angleLbl);
+  if(lbl) lbl.textContent = S.angleName || _classifyAngle(rot,tilt);
+}
+
+function _resizeCanvasToCSS(canvas){
+  const dpr=window.devicePixelRatio||1;
+  const w=Math.max(1, Math.floor(canvas.clientWidth*dpr));
+  const h=Math.max(1, Math.floor(canvas.clientHeight*dpr));
+  if(canvas.width!==w || canvas.height!==h){ canvas.width=w; canvas.height=h; }
+  return {w,h,dpr};
+}
+
+function _sphereSetFromXY(p, x, y){
+  const ids=_sphereIds(p);
+  const c=document.getElementById(ids.canvas); if(!c) return;
+  const r=_resizeCanvasToCSS(c);
+  const rect=c.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  const cx=r.w/2, cy=r.h/2;
+  const px=(x-rect.left)*dpr, py=(y-rect.top)*dpr;
+  const dx=px-cx, dy=py-cy;
+  const rad=Math.min(cx,cy)*0.82;
+  const dist=Math.min(rad, Math.hypot(dx,dy));
+  // azimuth
+  let rot = Math.atan2(dx, -dy)*180/Math.PI; // top = 0
+  rot = Math.max(-180, Math.min(180, rot));
+  // polar -> tilt
+  let tilt = -(dy/rad)*90;
+  tilt = Math.max(-90, Math.min(90, tilt));
+  const S=_sphereState(p);
+  S.rotation = Math.round(rot);
+  S.tilt = Math.round(tilt);
+  if(!S.angleName || S.angleName==='아이레벨' || S.angleName==='하이앵글' || S.angleName==='로우앵글' || S.angleName==='후면샷' || S.angleName==='버즈아이' || S.angleName==='웜즈아이'){
+    S.angleName = _classifyAngle(S.rotation, S.tilt);
+  }
+  _syncSphereUI(p);
+  drawSphere(p);
+}
+
+function initSphere(p){
+  const ids=_sphereIds(p);
+  const canvas=document.getElementById(ids.canvas);
+  if(!canvas) return;
+  const S=_sphereState(p);
+  // initial sync
+  _syncSphereUI(p);
+
+  const down=(ev)=>{
+    SD[p].drag=true;
+    const e = ev.touches? ev.touches[0] : ev;
+    _sphereSetFromXY(p, e.clientX, e.clientY);
+  };
+  const move=(ev)=>{
+    if(!SD[p].drag) return;
+    const e = ev.touches? ev.touches[0] : ev;
+    _sphereSetFromXY(p, e.clientX, e.clientY);
+  };
+  const up=()=>{ SD[p].drag=false; };
+
+  canvas.onmousedown=down;
+  canvas.onmousemove=move;
+  window.addEventListener('mouseup', up);
+  canvas.ontouchstart=(ev)=>{ ev.preventDefault(); down(ev); };
+  canvas.ontouchmove=(ev)=>{ ev.preventDefault(); move(ev); };
+  canvas.ontouchend=up;
+
+  window.addEventListener('resize', ()=>drawSphere(p), {passive:true});
+  drawSphere(p);
+}
+
+function drawSphere(p){
+  const ids=_sphereIds(p);
+  const canvas=document.getElementById(ids.canvas);
+  const pv=document.getElementById(ids.preview);
+  if(!canvas) return;
+  const {w,h}= _resizeCanvasToCSS(canvas);
+  const ctx=canvas.getContext('2d');
+  const cx=w/2, cy=h/2;
+  const rad=Math.min(cx,cy)*0.82;
+
+  // bg
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#05050b';
+  ctx.fillRect(0,0,w,h);
+
+  // sphere circle
+  ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=2;
+  ctx.stroke();
+
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1;
+  for(let i=1;i<=3;i++){
+    const rr=rad*(i/4);
+    ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(cx-rad,cy); ctx.lineTo(cx+rad,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-rad); ctx.lineTo(cx,cy+rad); ctx.stroke();
+
+  // direction point
+  const S=_sphereState(p);
+  const rot=(S.rotation||0)*Math.PI/180;
+  const tilt=(S.tilt||0)*Math.PI/180;
+  const px = cx + rad*Math.sin(rot)*Math.cos(tilt);
+  const py = cy - rad*Math.sin(tilt);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px,py);
+  ctx.strokeStyle='rgba(232,255,71,0.25)'; ctx.lineWidth=2; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2);
+  ctx.fillStyle='rgba(232,255,71,0.9)'; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=2; ctx.stroke();
+
+  // roll hint arrow
+  const roll=(S.roll||0)*Math.PI/180;
+  const ar = 18;
+  const ax = px + ar*Math.cos(roll);
+  const ay = py + ar*Math.sin(roll);
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(ax,ay);
+  ctx.strokeStyle='rgba(167,139,250,0.55)'; ctx.lineWidth=2; ctx.stroke();
+
+  // preview (simple horizon)
+  if(pv){
+    const {w:pw,h:ph}= _resizeCanvasToCSS(pv);
+    const pctx=pv.getContext('2d');
+    pctx.clearRect(0,0,pw,ph);
+    pctx.fillStyle='#000'; pctx.fillRect(0,0,pw,ph);
+    pctx.save();
+    pctx.translate(pw/2, ph/2);
+    pctx.rotate(roll);
+    pctx.strokeStyle='rgba(255,255,255,0.5)'; pctx.lineWidth=2;
+    pctx.beginPath(); pctx.moveTo(-pw*0.45,0); pctx.lineTo(pw*0.45,0); pctx.stroke();
+    pctx.restore();
+    // dot for tilt (vertical)
+    const ty = ph/2 - Math.sin(tilt)* (ph*0.35);
+    pctx.fillStyle='rgba(232,255,71,0.9)';
+    pctx.beginPath(); pctx.arc(pw/2, ty, 3.5, 0, Math.PI*2); pctx.fill();
+  }
+}
+
+// Edit-orbit UI handlers
+function eSyncFromSlider(kind, v){
+  const n=parseFloat(v)||0;
+  if(kind==='rot') E.rotation=n;
+  else if(kind==='tilt') E.tilt=n;
+  else if(kind==='roll') E.roll=n;
+  E.angleName = _classifyAngle(E.rotation, E.tilt);
+  _syncSphereUI('e');
+  drawSphere('e');
+}
+function eSyncFromNum(kind, v){ eSyncFromSlider(kind, v); }
+
+function setEAngle(a,b,name){
+  // Interpret dutch: use roll=a, tilt=b
+  if(name==='더치'){
+    E.roll = parseFloat(a)||0;
+    E.tilt = parseFloat(b)||0;
+    E.rotation = 0;
+  }else{
+    E.rotation = parseFloat(a)||0;
+    E.tilt = parseFloat(b)||0;
+    E.roll = 0;
+  }
+  E.angleName = name || _classifyAngle(E.rotation, E.tilt);
+  _syncSphereUI('e');
+  drawSphere('e');
+}
+
+
+// ── Reference Upload (shared across tabs) ──────────────────────────────
+// REF stores dataURL by canonical key (e.g., "styleRef0"). Multiple DOM slots can render the same key.
+// Edit tab slots call triggerRef('styleRef0','eStyleRef0') etc.
+var REF = {}, _refKey = "", _refDom = "";
+var REF_DOMS = {}; // key -> Set(domIds)
+
+function _regRefDom(key, domId){
+  if(!REF_DOMS[key]) REF_DOMS[key] = new Set();
+  REF_DOMS[key].add(domId);
+}
+function _listRefDomIds(key){
+  const s = REF_DOMS[key];
+  if(!s) return [];
+  return Array.from(s);
+}
+function _parseDataUrl(dataUrl){
+  // "data:image/png;base64,AAAA"
+  const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl||'');
+  if(!m) return null;
+  return { mime: m[1], b64: m[2] };
+}
+function _refLabelForKey(key){
+  if(/^styleRef\d+/.test(key)) return "STYLE";
+  if(/^motionRef\d+/.test(key)) return "MOTION/COMPOSITION";
+  if(/^objRef\d+/.test(key)) return "OBJECT";
+  if(/^subjectRef\d+/.test(key)) return "SUBJECT";
+  return "REFERENCE";
+}
+
+function triggerRef(key, domId){
+  _refKey = key;
+  _refDom = domId || key;
+  _regRefDom(key, domId || key);
+  var inp = document.getElementById("refFileIn");
+  if(inp){ inp.value=""; inp.click(); }
+}
+
+function onRefFile(e){
+  var f = e.target.files[0];
+  if(!f || !_refKey) return;
+  var key = _refKey;
+  var r = new FileReader();
+  r.onload = function(ev){
+    REF[key] = ev.target.result;
+    _renderRefKey(key);
+  };
+  r.readAsDataURL(f);
+}
+
+function _renderRefKey(key){
+  // Ensure canonical gen-slot exists too (if present)
+  _regRefDom(key, key);
+  const domIds = _listRefDomIds(key);
+  const url = REF[key];
+
+  domIds.forEach((sid)=>{
+    var sl=document.getElementById(sid);
+    if(!sl) return;
+
+    if(!url){
+      // clear UI
+      while(sl.firstChild) sl.removeChild(sl.firstChild);
+      var sv=document.createElementNS("http://www.w3.org/2000/svg","svg");
+      sv.setAttribute("viewBox","0 0 14 14");sv.setAttribute("fill","none");
+      sv.setAttribute("stroke","currentColor");sv.setAttribute("stroke-width","1.3");
+      function ln(x1,y1,x2,y2){var l=document.createElementNS("http://www.w3.org/2000/svg","line");
+        l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);sv.appendChild(l);}
+      ln(7,2.5,7,11.5);ln(2.5,7,11.5,7);
+      sl.appendChild(sv);
+      (function(k,d){ sl.onclick=function(){ triggerRef(k,d); }; })(key, sid);
+      return;
+    }
+
+    // render image
+    while(sl.firstChild) sl.removeChild(sl.firstChild);
+    var img=document.createElement("img");img.src=url;img.className="ref-img";sl.appendChild(img);
+    var del=document.createElement("div");del.className="ref-del";del.innerHTML="&times;";
+    (function(k){
+      del.onclick=function(ev){ ev.stopPropagation(); delete REF[k]; _renderRefKey(k); };
+    })(key);
+    sl.appendChild(del);
+    sl.onclick=null;
+  });
+}
+
+// Backward-compat wrappers (existing code calls these)
+function _rRef(sid,url){ REF[sid]=url; _renderRefKey(sid); }
+function _clRef(sid){ delete REF[sid]; _renderRefKey(sid); }
+
+
+// ════════════════════════════════════════════════════════════════════
+// ① REF NAME SYSTEM
+// ════════════════════════════════════════════════════════════════════
+// REF_NAMES[key] = 사용자가 직접 붙인 이름 (없으면 기본 단축어)
+var REF_NAMES = {};
+
+// 카테고리별 단축어 prefix
+const REF_SHORT = {
+  styleRef0:'스1', styleRef1:'스2', styleRef2:'스3',
+  motionRef0:'모1', motionRef1:'모2', motionRef2:'모3',
+  objRef0:'오1',   objRef1:'오2',   objRef2:'오3',
+  subjectRef0:'주1', subjectRef1:'주2', subjectRef2:'주3',
+};
+
+// API label (프롬프트에서 사용)
+const REF_API_LABEL = {
+  styleRef0:'STYLE-1', styleRef1:'STYLE-2', styleRef2:'STYLE-3',
+  motionRef0:'MOTION-1', motionRef1:'MOTION-2', motionRef2:'MOTION-3',
+  objRef0:'OBJECT-1', objRef1:'OBJECT-2', objRef2:'OBJECT-3',
+  subjectRef0:'SUBJECT-1', subjectRef1:'SUBJECT-2', subjectRef2:'SUBJECT-3',
+};
+
+function getRefDisplayName(key){
+  return REF_NAMES[key] || REF_SHORT[key] || key;
+}
+
+// ── renderRefPanel: 레퍼런스 패널을 동적으로 렌더링 ────────────────
+const REF_CATEGORIES = [
+  { label:'스타일 레퍼런스', hint:'분위기·렌더링 스타일', keys:['styleRef0','styleRef1','styleRef2'], prefix:'e' },
+  { label:'모션/구도 레퍼런스', hint:'인물 동세·사물 구성', keys:['motionRef0','motionRef1','motionRef2'], prefix:'e' },
+  { label:'오브제 레퍼런스', hint:'옷·물건·공간 요소', keys:['objRef0','objRef1','objRef2'], prefix:'e' },
+  { label:'주제 레퍼런스', hint:'참고 외모·메인 오브제', keys:['subjectRef0','subjectRef1','subjectRef2'], prefix:'e', isSubject:true },
+];
+
+function renderRefPanel(panelId, isEdit){
+  const panel = document.getElementById(panelId);
+  if(!panel) return;
+  panel.innerHTML = '';
+
+  REF_CATEGORIES.forEach(cat => {
+    const div = document.createElement('div');
+    // 헤더
+    const hdr = document.createElement('p');
+    hdr.className = 'ref-label';
+    hdr.innerHTML = `${cat.label} <span class="ref-hint">(${cat.hint})</span>`;
+
+    // 주제 레퍼런스에 앵커 버튼 추가
+    if(cat.isSubject && !isEdit){
+      const anchorBtn = document.createElement('button');
+      anchorBtn.className = 'ptool-btn';
+      anchorBtn.style.cssText = 'margin-left:8px;font-size:0.48rem;padding:1px 5px;';
+      anchorBtn.title = '현재 생성된 이미지를 주제 레퍼런스 1번에 설정';
+      anchorBtn.textContent = '+ 현재 이미지 → 주1';
+      anchorBtn.onclick = () => setCurrentAsSubjectRef();
+      hdr.appendChild(anchorBtn);
+    }
+    div.appendChild(hdr);
+
+    // 슬롯들
+    const row = document.createElement('div');
+    row.className = 'ref-row';
+
+    cat.keys.forEach((key, i) => {
+      const slotId = isEdit ? ('e' + key.charAt(0).toUpperCase() + key.slice(1)) : key;
+      const slot = document.createElement('div');
+      slot.className = 'ref-slot';
+      slot.id = slotId;
+
+      // 번호 배지
+      const badge = document.createElement('div');
+      badge.className = 'ref-badge';
+      badge.id = slotId + '_badge';
+      badge.textContent = REF_SHORT[key] || (i+1);
+      slot.appendChild(badge);
+
+      // + 아이콘 (기본)
+      slot.innerHTML += `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="7" y1="2.5" x2="7" y2="11.5"/><line x1="2.5" y1="7" x2="11.5" y2="7"/></svg>`;
+
+      // 이름 편집 라벨
+      const nameLbl = document.createElement('div');
+      nameLbl.className = 'ref-slot-name';
+      nameLbl.id = slotId + '_name';
+      nameLbl.contentEditable = 'true';
+      nameLbl.textContent = getRefDisplayName(key);
+      nameLbl.title = '클릭해서 이름 편집';
+      nameLbl.onclick = (e) => e.stopPropagation();
+      nameLbl.onblur = (e) => {
+        const val = e.target.textContent.trim();
+        REF_NAMES[key] = val || REF_SHORT[key];
+        _updateRefNameDisplay(key);
+      };
+      nameLbl.onkeydown = (e) => { if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } };
+      slot.appendChild(nameLbl);
+
+      // 클릭 → 업로드
+      slot.onclick = (e) => {
+        if(e.target.classList.contains('ref-slot-name') || e.target.closest('.ref-slot-name')) return;
+        triggerRef(key, slotId);
+      };
+
+      // REF_DOMS 등록
+      _regRefDom(key, slotId);
+      row.appendChild(slot);
+    });
+
+    div.appendChild(row);
+    panel.appendChild(div);
+  });
+
+  // 이미 업로드된 이미지 렌더링
+  Object.keys(REF_SHORT).forEach(k => { if(REF[k]) _renderRefKey(k); });
+}
+
+function _updateRefNameDisplay(key){
+  // gen + edit 슬롯 이름 동시 업데이트
+  const name = getRefDisplayName(key);
+  [key, 'e'+key.charAt(0).toUpperCase()+key.slice(1)].forEach(sid => {
+    const el = document.getElementById(sid+'_name');
+    if(el) el.textContent = name;
+    const badge = document.getElementById(sid+'_badge');
+    if(badge) badge.textContent = REF_SHORT[key]||'?';
+  });
+}
+
+
+
+</script>
+</body>
+</html>
